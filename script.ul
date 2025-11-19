@@ -1,0 +1,7 @@
+sayac = 2
+toplam = 0
+while(sayac < 5)  {
+    toplam = toplam + sayac
+    sayac = sayac + 1
+}
+print(toplam)

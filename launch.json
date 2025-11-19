@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(gdb) Başlat",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/ulang_interpreter", 
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "gdb için biçimlendirmeyi etkinleştir",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "C++ Derle ve Çalıştır (U-Lang)" 
+        }
+    ]
+}

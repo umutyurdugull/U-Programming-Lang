@@ -1,0 +1,25 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "C++ Derle ve Çalıştır (U-Lang)",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-g", 
+                "main.cpp",
+                "-o", 
+                "ulang_interpreter",
+                "-std=c++17" 
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "g++ kullanarak main.cpp dosyasını derler",
+            "problemMatcher": [
+                "$gcc"
+            ]
+        }
+    ]
+}

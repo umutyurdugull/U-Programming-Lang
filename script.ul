@@ -5,3 +5,6 @@ while(sayac < 5)  {
     sayac = sayac + 1
 }
 print(toplam)
+pi = 3.14159
+print(pi)
+print(3 != 5)

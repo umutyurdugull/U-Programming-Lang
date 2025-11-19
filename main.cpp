@@ -869,12 +869,13 @@ std::shared_ptr<ASTNode> parse_term(const std::vector<Token>& tokens, size_t& cu
     return left;
 }
 /* 
-Hi. If you're reading this you might wonder why I did that? 
+Hi. If you're reading this you might wonder why I did this? 
 Well, here's your answer ;
     1 - I don't have a girlfriend.
     2 - I hate my life because I code in C/C++ and Assembly. Sometimes Fortran.
     3 - Yes, I do know Fortran and Assembly. Thats the reason why this fucking lang has "in that case" in if block.
-    4 - I don't have job.
+    4 - I don't have j*b.
+    5 - I have ADD
 */
 std::shared_ptr<ASTNode> parse_factor(const std::vector<Token>& tokens, size_t& current) {
     if (tokens[current].type == TOK_NUMBER) {

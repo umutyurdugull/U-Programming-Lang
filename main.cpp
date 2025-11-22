@@ -9,10 +9,9 @@
 #include <stdexcept>
 #include <algorithm>
 #include <cctype>
-
-// =======================================================
-// ERROR HANDLING MECHANISM
-// =======================================================
+#include <iomanip>
+#include <limits>
+#include <functional>
 
 int current_line = 1; 
 int current_column = 1;
@@ -22,36 +21,24 @@ public:
     int line;
     int column;
     std::string type;
-
     ULangError(const std::string& message, const std::string& error_type, int err_line, int err_col)
         : std::runtime_error(message), line(err_line), column(err_col), type(error_type) {}
-    
     std::string getFullMessage() const {
         return "ERROR [" + type + "] Line " + std::to_string(line) + ", Column " + std::to_string(column) + ": " + what();
     }
 };
 
-inline void throw_lexer_error(const std::string& msg) {
-    throw ULangError(msg, "Lexer", current_line, current_column);
-}
-
-inline void throw_parser_error(const std::string& msg) {
-    throw ULangError(msg, "Parser", current_line, current_column);
-}
-
-inline void throw_runtime_error(const std::string& msg) {
-    throw ULangError(msg, "Runtime", current_line, current_column);
-}
-
-// =======================================================
-// TOKEN AND LEXER
-// =======================================================
+inline void throw_lexer_error(const std::string& msg) { throw ULangError(msg, "Lexer", current_line, current_column); }
+inline void throw_parser_error(const std::string& msg) { throw ULangError(msg, "Parser", current_line, current_column); }
+inline void throw_runtime_error(const std::string& msg) { throw ULangError(msg, "Runtime", current_line, current_column); }
 
 enum TokenType { 
     TOK_ID, TOK_NUMBER, TOK_STRING_LIT, TOK_LPAREN, TOK_RPAREN, TOK_COMMA, TOK_EQUALS,
-    TOK_PLUS, TOK_MINUS, TOK_STAR, TOK_SLASH, TOK_LT, TOK_GT, TOK_EE, TOK_NE, TOK_LBRACE, TOK_RBRACE,
-    TOK_IF, TOK_ELSE, TOK_WHILE, TOK_IN, TOK_THAT, TOK_CASE,
-    TOK_EOF 
+    TOK_PLUS, TOK_MINUS, TOK_STAR, TOK_SLASH, TOK_PERCENT, TOK_LT, TOK_GT, TOK_EE, TOK_NE, 
+    TOK_LBRACE, TOK_RBRACE, TOK_LBRACKET, TOK_RBRACKET, TOK_SEMICOLON,
+    TOK_IF, TOK_ELSE, TOK_WHILE, TOK_FOR, TOK_IN, TOK_THAT, TOK_CASE,
+    TOK_CLASS, TOK_THIS, TOK_DOT, TOK_NEW, TOK_FUNCTION, TOK_RETURN, 
+    TOK_TRY, TOK_CATCH, TOK_NULL, TOK_TRUE, TOK_FALSE, TOK_EOF 
 };
 
 struct Token {
@@ -59,7 +46,6 @@ struct Token {
     std::string text;
     int line;
     int column;
-
     Token(TokenType t, const std::string& txt, int l = 0, int c = 0) 
         : type(t), text(txt), line(l), column(c) {}
 };
@@ -68,64 +54,52 @@ TokenType check_keyword(const std::string& text) {
     if (text == "if") return TOK_IF;
     if (text == "else") return TOK_ELSE;
     if (text == "while") return TOK_WHILE;
+    if (text == "for") return TOK_FOR;
     if (text == "in") return TOK_IN;
     if (text == "that") return TOK_THAT;
     if (text == "case") return TOK_CASE;
+    if (text == "class") return TOK_CLASS;
+    if (text == "this") return TOK_THIS;
+    if (text == "new") return TOK_NEW;
+    if (text == "function") return TOK_FUNCTION;
+    if (text == "return") return TOK_RETURN;
+    if (text == "try") return TOK_TRY;
+    if (text == "catch") return TOK_CATCH;
+    if (text == "null") return TOK_NULL;
+    if (text == "true") return TOK_TRUE;
+    if (text == "false") return TOK_FALSE;
     return TOK_ID;
 }
 
 std::vector<Token> tokenize(const std::string& source) {
     std::vector<Token> tokens;
     size_t i = 0;
-    
     current_line = 1;
     current_column = 1;
-
     while (i < source.length()) {
         char c = source[i];
-
-        if (c == '\n') { 
-            i++;
-            current_line++;
-            current_column = 1;
-            continue; 
-        }
-
-        if (isspace(c)) { 
-            i++; 
-            current_column++;
-            continue; 
-        }
-
-        int token_start_line = current_line;
-        int token_start_column = current_column;
-
+        if (c == '\n') { i++; current_line++; current_column = 1; continue; }
+        if (isspace(c)) { i++; current_column++; continue; }
+        int start_line = current_line;
+        int start_col = current_column;
         if (c == '"') {
-            i++; 
-            current_column++;
+            i++; current_column++;
             std::string s;
             while (i < source.length() && source[i] != '"') {
-                if (source[i] == '\n') {
-                    current_line++;
-                    current_column = 1;
-                } else {
-                    current_column++;
-                }
+                if (source[i] == '\n') { current_line++; current_column = 1; }
+                else { current_column++; }
                 s += source[i++];
             }
-            if (i >= source.length()) {
-                throw_lexer_error("Unclosed string literal.");
-            }
-            i++; 
-            current_column++;
-            tokens.push_back(Token(TOK_STRING_LIT, s, token_start_line, token_start_column));
+            if (i >= source.length()) throw_lexer_error("Unclosed string literal.");
+            i++; current_column++;
+            tokens.push_back(Token(TOK_STRING_LIT, s, start_line, start_col));
         } 
         else if (isalpha(c) || c == '_') {
             std::string id;
             while (i < source.length() && (isalnum(source[i]) || source[i] == '_')) {
                 id += source[i++];
             }
-            tokens.push_back(Token(check_keyword(id), id, token_start_line, token_start_column));
+            tokens.push_back(Token(check_keyword(id), id, start_line, start_col));
             current_column += id.length();
         } 
         else if (isdigit(c)) {
@@ -133,105 +107,177 @@ std::vector<Token> tokenize(const std::string& source) {
             while (i < source.length() && (isdigit(source[i]) || source[i] == '.')) {
                 num += source[i++];
             }
-            tokens.push_back(Token(TOK_NUMBER, num, token_start_line, token_start_column));
+            tokens.push_back(Token(TOK_NUMBER, num, start_line, start_col));
             current_column += num.length();
         } 
         else if (c == '=') {
             if (i + 1 < source.length() && source[i+1] == '=') { 
-                tokens.push_back(Token(TOK_EE, "==", token_start_line, token_start_column)); 
-                i+=2; 
-                current_column+=2;
+                tokens.push_back(Token(TOK_EE, "==", start_line, start_col)); i+=2; current_column+=2;
             } else { 
-                tokens.push_back(Token(TOK_EQUALS, "=", token_start_line, token_start_column)); 
-                i++; 
-                current_column++;
+                tokens.push_back(Token(TOK_EQUALS, "=", start_line, start_col)); i++; current_column++;
             }
         } 
         else if (c == '!') {
             if (i + 1 < source.length() && source[i+1] == '=') {
-                tokens.push_back(Token(TOK_NE, "!=", token_start_line, token_start_column));
-                i+=2;
-                current_column+=2;
+                tokens.push_back(Token(TOK_NE, "!=", start_line, start_col)); i+=2; current_column+=2;
+            } else { i++; current_column++; throw_lexer_error("Unknown operator: '!'"); }
+        }
+        else if (c == '/') { 
+            tokens.push_back(Token(TOK_SLASH, "/", start_line, start_col)); i++; current_column++;
+        }
+        else if (c == '-') {
+            if (i + 1 < source.length() && source[i+1] == '>') {
+                i += 2; current_column += 2;
+                while (i < source.length() && source[i] != '\n') { 
+                    i++; 
+                    current_column++; 
+                }
+                continue;
             } else {
-                i++;
-                current_column++;
-                throw_lexer_error("Unknown operator: '!'. Only '!=' is supported.");
+                tokens.push_back(Token(TOK_MINUS, "-", start_line, start_col)); i++; current_column++;
             }
         }
-        else if (c == '(') { tokens.push_back(Token(TOK_LPAREN, "(", token_start_line, token_start_column)); i++; current_column++; }
-        else if (c == ')') { tokens.push_back(Token(TOK_RPAREN, ")", token_start_line, token_start_column)); i++; current_column++; }
-        else if (c == '{') { tokens.push_back(Token(TOK_LBRACE, "{", token_start_line, token_start_column)); i++; current_column++; }
-        else if (c == '}') { tokens.push_back(Token(TOK_RBRACE, "}", token_start_line, token_start_column)); i++; current_column++; }
-        else if (c == ',') { tokens.push_back(Token(TOK_COMMA, ",", token_start_line, token_start_column)); i++; current_column++; }
-        else if (c == '+') { tokens.push_back(Token(TOK_PLUS, "+", token_start_line, token_start_column)); i++; current_column++; }
-        else if (c == '-') { tokens.push_back(Token(TOK_MINUS, "-", token_start_line, token_start_column)); i++; current_column++; }
-        else if (c == '*') { tokens.push_back(Token(TOK_STAR, "*", token_start_line, token_start_column)); i++; current_column++; }
-        else if (c == '/') { tokens.push_back(Token(TOK_SLASH, "/", token_start_line, token_start_column)); i++; current_column++; }
-        else if (c == '<') { tokens.push_back(Token(TOK_LT, "<", token_start_line, token_start_column)); i++; current_column++; }
-        else if (c == '>') { tokens.push_back(Token(TOK_GT, ">", token_start_line, token_start_column)); i++; current_column++; }
-        
-        else { 
-            i++; 
-            current_column++;
-            throw_lexer_error("Unknown character."); 
-        }
+        else if (c == ';') { tokens.push_back(Token(TOK_SEMICOLON, ";", start_line, start_col)); i++; current_column++; }
+        else if (c == '.') { tokens.push_back(Token(TOK_DOT, ".", start_line, start_col)); i++; current_column++; }
+        else if (c == '(') { tokens.push_back(Token(TOK_LPAREN, "(", start_line, start_col)); i++; current_column++; }
+        else if (c == ')') { tokens.push_back(Token(TOK_RPAREN, ")", start_line, start_col)); i++; current_column++; }
+        else if (c == '{') { tokens.push_back(Token(TOK_LBRACE, "{", start_line, start_col)); i++; current_column++; }
+        else if (c == '}') { tokens.push_back(Token(TOK_RBRACE, "}", start_line, start_col)); i++; current_column++; }
+        else if (c == '[') { tokens.push_back(Token(TOK_LBRACKET, "[", start_line, start_col)); i++; current_column++; }
+        else if (c == ']') { tokens.push_back(Token(TOK_RBRACKET, "]", start_line, start_col)); i++; current_column++; }
+        else if (c == ',') { tokens.push_back(Token(TOK_COMMA, ",", start_line, start_col)); i++; current_column++; }
+        else if (c == '+') { tokens.push_back(Token(TOK_PLUS, "+", start_line, start_col)); i++; current_column++; }
+        else if (c == '*') { tokens.push_back(Token(TOK_STAR, "*", start_line, start_col)); i++; current_column++; }
+        else if (c == '%') { tokens.push_back(Token(TOK_PERCENT, "%", start_line, start_col)); i++; current_column++; }
+        else if (c == '<') { tokens.push_back(Token(TOK_LT, "<", start_line, start_col)); i++; current_column++; }
+        else if (c == '>') { tokens.push_back(Token(TOK_GT, ">", start_line, start_col)); i++; current_column++; }
+        else { i++; current_column++; throw_lexer_error("Unknown character"); }
     }
     tokens.push_back(Token(TOK_EOF, "", current_line, current_column));
     return tokens;
 }
 
-// =======================================================
-// ULANG OBJECT AND AST DEFINITIONS
-// =======================================================
-
 class Interpreter;
 class ULangObject;
-class FunctionObject;
+class ASTNode;
+class InstanceObject;
 
-class ULangObject {
+class ULangObject : public std::enable_shared_from_this<ULangObject> {
 public:
-    enum Type { NUMBER, STRING, BOOLEAN, FUNCTION, VOID };
+    enum Type { NUMBER, STRING, BOOLEAN, FUNCTION, VOID, CLASS, INSTANCE, LIST, BUILTIN };
     Type type;
     ULangObject(Type t) : type(t) {}
     virtual ~ULangObject() = default;
     virtual std::string toString() const = 0;
-};
-
-class NumberObject : public ULangObject {
-public:
-    double value;
-    NumberObject(double val) : ULangObject(NUMBER), value(val) {}
-    std::string toString() const override { 
-        std::string s = std::to_string(value);
-        s.erase(s.find_last_not_of('0') + 1, std::string::npos);
-        if (s.back() == '.') s.pop_back();
-        return s;
-    }
-};
-
-class BooleanObject : public ULangObject {
-public:
-    bool value;
-    BooleanObject(bool val) : ULangObject(BOOLEAN), value(val) {}
-    std::string toString() const override { return value ? "true" : "false"; }
-};
-
-class StringObject : public ULangObject {
-public:
-    std::string value;
-    StringObject(const std::string& val) : ULangObject(STRING), value(val) {}
-    std::string toString() const override { return value; }
+    virtual double toDouble() const { return 0.0; }
+    virtual bool isTruthy() const { return type != VOID && type != BOOLEAN ? true : (type == BOOLEAN ? toDouble() : false); }
+    virtual std::shared_ptr<ULangObject> getMethod(const std::string& name) { return nullptr; }
 };
 
 class VoidObject : public ULangObject {
 public:
     VoidObject() : ULangObject(VOID) {}
-    std::string toString() const override { return "void"; }
+    std::string toString() const override { return "null"; }
+    bool isTruthy() const override { return false; }
+};
+static std::shared_ptr<ULangObject> VOID_INSTANCE = std::make_shared<VoidObject>();
+
+class NumberObject : public ULangObject {
+public:
+    double value;
+    NumberObject(double v) : ULangObject(NUMBER), value(v) {}
+    std::string toString() const override {
+        std::stringstream ss;
+        ss << std::setprecision(std::numeric_limits<double>::max_digits10) << value;
+        return ss.str();
+    }
+    double toDouble() const override { return value; }
+    bool isTruthy() const override { return value != 0.0; }
 };
 
-static std::shared_ptr<ULangObject> VOID_INSTANCE = std::make_shared<VoidObject>();
-static std::shared_ptr<ULangObject> TRUE_OBJECT = std::make_shared<BooleanObject>(true);
-static std::shared_ptr<ULangObject> FALSE_OBJECT = std::make_shared<BooleanObject>(false);
+class StringObject : public ULangObject {
+public:
+    std::string value;
+    StringObject(const std::string& v) : ULangObject(STRING), value(v) {}
+    std::string toString() const override { return value; }
+    bool isTruthy() const override { return !value.empty(); }
+};
+
+class BooleanObject : public ULangObject {
+public:
+    bool value;
+    BooleanObject(bool v) : ULangObject(BOOLEAN), value(v) {}
+    std::string toString() const override { return value ? "true" : "false"; }
+    double toDouble() const override { return value ? 1.0 : 0.0; }
+    bool isTruthy() const override { return value; }
+};
+
+class FunctionObject : public ULangObject {
+public:
+    std::vector<std::string> params;
+    std::vector<std::shared_ptr<ASTNode>> body;
+    std::shared_ptr<InstanceObject> receiver; 
+    FunctionObject(const std::vector<std::string>& p, const std::vector<std::shared_ptr<ASTNode>>& b, std::shared_ptr<InstanceObject> r = nullptr)
+        : ULangObject(FUNCTION), params(p), body(b), receiver(r) {}
+    std::string toString() const override { return "<function>"; }
+    std::shared_ptr<FunctionObject> bind(std::shared_ptr<InstanceObject> instance) {
+        return std::make_shared<FunctionObject>(params, body, instance);
+    }
+    virtual std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args);
+};
+
+class BuiltinFunction : public ULangObject {
+public:
+    using FuncType = std::function<std::shared_ptr<ULangObject>(Interpreter&, const std::vector<std::shared_ptr<ULangObject>>&)>;
+    FuncType func;
+    std::string name;
+    BuiltinFunction(const std::string& n, FuncType f) : ULangObject(BUILTIN), name(n), func(f) {}
+    std::string toString() const override { return "<builtin " + name + ">"; }
+    std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) { return func(interpreter, args); }
+};
+
+class ListObject : public ULangObject {
+public:
+    std::vector<std::shared_ptr<ULangObject>> elements;
+    ListObject(const std::vector<std::shared_ptr<ULangObject>>& e) : ULangObject(LIST), elements(e) {}
+    std::string toString() const override {
+        std::string s = "[";
+        for (size_t i = 0; i < elements.size(); ++i) {
+            s += elements[i]->toString();
+            if (i < elements.size() - 1) s += ", ";
+        }
+        return s + "]";
+    }
+    std::shared_ptr<ULangObject> getMethod(const std::string& name) override;
+};
+
+class ClassObject : public ULangObject {
+public:
+    std::string name;
+    std::map<std::string, std::shared_ptr<FunctionObject>> methods;
+    ClassObject(const std::string& n, const std::map<std::string, std::shared_ptr<FunctionObject>>& m)
+        : ULangObject(CLASS), name(n), methods(m) {}
+    std::string toString() const override { return "<class " + name + ">"; }
+};
+
+class InstanceObject : public ULangObject {
+public:
+    std::shared_ptr<ClassObject> klass;
+    std::map<std::string, std::shared_ptr<ULangObject>> fields;
+    InstanceObject(std::shared_ptr<ClassObject> k) : ULangObject(INSTANCE), klass(k) {}
+    std::string toString() const override { return "<instance of " + klass->name + ">"; }
+    std::shared_ptr<ULangObject> getProperty(const std::string& name) {
+        if (fields.count(name)) return fields.at(name);
+        if (klass->methods.count(name)) {
+            return klass->methods.at(name)->bind(std::static_pointer_cast<InstanceObject>(shared_from_this()));
+        }
+        throw_runtime_error("Undefined property '" + name + "'.");
+        return VOID_INSTANCE;
+    }
+    void setProperty(const std::string& name, std::shared_ptr<ULangObject> value) {
+        fields[name] = value;
+    }
+};
 
 class ASTNode {
 public:
@@ -239,717 +285,709 @@ public:
     virtual std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) = 0;
 };
 
-class NumberLiteral : public ASTNode {
-public:
-    double value;
-    NumberLiteral(double val) : value(val) {}
-    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override;
-};
-
-class StringLiteral : public ASTNode {
-public:
-    std::string value;
-    StringLiteral(const std::string& val) : value(val) {}
-    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override;
-};
-
-class Identifier : public ASTNode {
-public:
-    std::string name;
-    Identifier(const std::string& n) : name(n) {}
-    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override;
-};
-
-class BinaryOp : public ASTNode {
-public:
-    std::string op;
-    std::shared_ptr<ASTNode> left;
-    std::shared_ptr<ASTNode> right;
-    BinaryOp(const std::string& o, std::shared_ptr<ASTNode> l, std::shared_ptr<ASTNode> r)
-        : op(o), left(l), right(r) {}
-    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override;
-};
-
-class Block : public ASTNode {
-public:
-    std::vector<std::shared_ptr<ASTNode>> statements;
-    Block(const std::vector<std::shared_ptr<ASTNode>>& stmts) : statements(stmts) {}
-    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override;
-};
-
-class IfStatement : public ASTNode {
-public:
-    std::shared_ptr<ASTNode> condition;
-    std::shared_ptr<ASTNode> thenBlock;
-    std::shared_ptr<ASTNode> elseBlock;
-    IfStatement(std::shared_ptr<ASTNode> cond, std::shared_ptr<ASTNode> thenB, std::shared_ptr<ASTNode> elseB = nullptr)
-        : condition(cond), thenBlock(thenB), elseBlock(elseB) {}
-    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override;
-};
-
-class WhileLoop : public ASTNode {
-public:
-    std::shared_ptr<ASTNode> condition;
-    std::shared_ptr<ASTNode> body;
-    WhileLoop(std::shared_ptr<ASTNode> cond, std::shared_ptr<ASTNode> bodyB)
-        : condition(cond), body(bodyB) {}
-    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override;
-};
-
-class Assignment : public ASTNode {
-public:
-    std::string name;
-    std::shared_ptr<ASTNode> value;
-    Assignment(const std::string& n, std::shared_ptr<ASTNode> v) : name(n), value(v) {}
-    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override;
-};
-
-class FunctionCall : public ASTNode {
-public:
-    std::string name;
-    std::vector<std::shared_ptr<ASTNode>> arguments;
-    FunctionCall(const std::string& n, const std::vector<std::shared_ptr<ASTNode>>& args)
-        : name(n), arguments(args) {}
-    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override;
-};
-
-class FunctionObject : public ULangObject {
-public:
-    std::vector<std::string> parameters;
-    std::vector<std::shared_ptr<ASTNode>> body;
-    
-    FunctionObject(const std::vector<std::string>& params, const std::vector<std::shared_ptr<ASTNode>>& b)
-        : ULangObject(FUNCTION), parameters(params), body(b) {}
-    
-    std::string toString() const override { return "<function>"; }
-    
-    virtual std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args);
-};
-
-// =======================================================
-// INTERPRETER AND EVALUATION METHODS
-// =======================================================
-
 class Interpreter {
-private:
-    std::map<std::string, std::shared_ptr<ULangObject>> environment;
-
 public:
-    Interpreter() = default;
+    std::map<std::string, std::shared_ptr<ULangObject>> globals;
+    std::map<std::string, std::shared_ptr<ULangObject>>* current_env;
+    std::vector<std::map<std::string, std::shared_ptr<ULangObject>>> env_stack;
+    std::shared_ptr<InstanceObject> current_instance = nullptr;
 
-    void define(const std::string& name, std::shared_ptr<ULangObject> obj) {
-        environment[name] = obj;
+    Interpreter() {
+        env_stack.push_back(std::map<std::string, std::shared_ptr<ULangObject>>());
+        current_env = &env_stack.back();
+        loadLibs();
+    }
+
+    void define(const std::string& name, std::shared_ptr<ULangObject> val) {
+        (*current_env)[name] = val;
+    }
+
+    void assign(const std::string& name, std::shared_ptr<ULangObject> val) {
+        for (auto it = env_stack.rbegin(); it != env_stack.rend(); ++it) {
+            if (it->count(name)) {
+                (*it)[name] = val;
+                return;
+            }
+        }
+        throw_runtime_error("Undefined variable '" + name + "'.");
     }
 
     std::shared_ptr<ULangObject> lookup(const std::string& name) {
-        if (environment.count(name)) {
-            return environment.at(name);
+        for (auto it = env_stack.rbegin(); it != env_stack.rend(); ++it) {
+            if (it->count(name)) return (*it)[name];
         }
-        throw_runtime_error("Undefined identifier '" + name + "'");
+        throw_runtime_error("Undefined variable '" + name + "'.");
     }
 
-    std::shared_ptr<ULangObject> execute(const std::vector<std::shared_ptr<ASTNode>>& program) {
-        std::shared_ptr<ULangObject> result = VOID_INSTANCE;
-        for (const auto& statement : program) {
-            result = statement->evaluate(*this);
-        }
-        return result;
+    void pushEnv() {
+        env_stack.push_back(std::map<std::string, std::shared_ptr<ULangObject>>());
+        current_env = &env_stack.back();
     }
+
+    void popEnv() {
+        if (env_stack.size() > 1) {
+            env_stack.pop_back();
+            current_env = &env_stack.back();
+        }
+    }
+
+    void enterInstanceContext(std::shared_ptr<InstanceObject> instance) { current_instance = instance; }
+    void exitInstanceContext() { current_instance = nullptr; }
+    std::shared_ptr<InstanceObject> getCurrentInstance() { return current_instance; }
+
+    void loadLibs();
+    std::shared_ptr<ULangObject> executeBlock(const std::vector<std::shared_ptr<ASTNode>>& statements);
 };
 
-std::shared_ptr<ULangObject> NumberLiteral::evaluate(Interpreter& interpreter) {
-    return std::make_shared<NumberObject>(value);
-}
-
-std::shared_ptr<ULangObject> StringLiteral::evaluate(Interpreter& interpreter) {
-    return std::make_shared<StringObject>(value);
-}
-
-std::shared_ptr<ULangObject> Identifier::evaluate(Interpreter& interpreter) {
-    return interpreter.lookup(name);
-}
-
-std::shared_ptr<ULangObject> Assignment::evaluate(Interpreter& interpreter) {
-    std::shared_ptr<ULangObject> val = value->evaluate(interpreter);
-    interpreter.define(name, val);
-    return val;
-}
-
-std::shared_ptr<ULangObject> Block::evaluate(Interpreter& interpreter) {
-    std::shared_ptr<ULangObject> result = VOID_INSTANCE;
-    for (const auto& statement : statements) {
-        result = statement->evaluate(interpreter);
-    }
-    return result;
-}
-
-std::shared_ptr<ULangObject> BinaryOp::evaluate(Interpreter& interpreter) {
-    std::shared_ptr<ULangObject> leftVal = left->evaluate(interpreter);
-    std::shared_ptr<ULangObject> rightVal = right->evaluate(interpreter);
-
-    if (leftVal->type != ULangObject::NUMBER || rightVal->type != ULangObject::NUMBER) {
-        throw_runtime_error("Binary operations only support numbers.");
-    }
-    double l = std::static_pointer_cast<NumberObject>(leftVal)->value;
-    double r = std::static_pointer_cast<NumberObject>(rightVal)->value;
-
-    if (op == "+") return std::make_shared<NumberObject>(l + r);
-    if (op == "-") return std::make_shared<NumberObject>(l - r);
-    if (op == "*") return std::make_shared<NumberObject>(l * r);
-    if (op == "/") return std::make_shared<NumberObject>(l / r);
-    
-    if (op == "==") return l == r ? TRUE_OBJECT : FALSE_OBJECT;
-    if (op == "!=") return l != r ? TRUE_OBJECT : FALSE_OBJECT;
-    if (op == "<") return l < r ? TRUE_OBJECT : FALSE_OBJECT;
-    if (op == ">") return l > r ? TRUE_OBJECT : FALSE_OBJECT;
-    
-    throw_runtime_error("Unknown binary operator " + op);
-}
-
-std::shared_ptr<ULangObject> IfStatement::evaluate(Interpreter& interpreter) {
-    std::shared_ptr<ULangObject> conditionVal = condition->evaluate(interpreter);
-    
-    if (conditionVal->type != ULangObject::BOOLEAN) {
-        throw_runtime_error("If condition must be a boolean.");
-    }
-
-    if (std::static_pointer_cast<BooleanObject>(conditionVal)->value) {
-        return thenBlock->evaluate(interpreter);
-    } else if (elseBlock) {
-        return elseBlock->evaluate(interpreter);
-    }
-    return VOID_INSTANCE;
-}
-
-std::shared_ptr<ULangObject> WhileLoop::evaluate(Interpreter& interpreter) {
-    std::shared_ptr<ULangObject> result = VOID_INSTANCE;
-    while (true) {
-        std::shared_ptr<ULangObject> conditionVal = condition->evaluate(interpreter);
-        if (conditionVal->type != ULangObject::BOOLEAN) {
-            throw_runtime_error("While condition must be a boolean.");
-        }
-        if (!std::static_pointer_cast<BooleanObject>(conditionVal)->value) {
-            break;
-        }
-        result = body->evaluate(interpreter);
-    }
-    return result;
-}
-
-std::shared_ptr<ULangObject> FunctionCall::evaluate(Interpreter& interpreter) {
-    std::shared_ptr<ULangObject> funcObj = interpreter.lookup(name);
-    if (funcObj->type != ULangObject::FUNCTION) throw_runtime_error("'" + name + "' is not a function.");
-    std::shared_ptr<FunctionObject> func = std::static_pointer_cast<FunctionObject>(funcObj);
-    std::vector<std::shared_ptr<ULangObject>> evaluatedArgs;
-    for (const auto& argNode : arguments) evaluatedArgs.push_back(argNode->evaluate(interpreter));
-    return func->call(interpreter, evaluatedArgs);
-}
-
-std::shared_ptr<ULangObject> FunctionObject::call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) {
-    for (size_t i = 0; i < parameters.size() && i < args.size(); ++i) interpreter.define(parameters[i], args[i]);
-    return interpreter.execute(body);
-}
-
-double get_number_arg_safe(const std::vector<std::shared_ptr<ULangObject>>& args, size_t index, const std::string& funcName) {
-    if (args.size() <= index || args[index]->type != ULangObject::NUMBER) {
-        throw_runtime_error(funcName + " function expects a number at argument " + std::to_string(index + 1));
-    }
-    return std::static_pointer_cast<NumberObject>(args[index])->value;
-}
-
-std::string get_string_arg_safe(const std::vector<std::shared_ptr<ULangObject>>& args, size_t index, const std::string& funcName) {
-    if (args.size() <= index || args[index]->type != ULangObject::STRING) {
-        throw_runtime_error(funcName + " function expects a string at argument " + std::to_string(index + 1));
-    }
-    return std::static_pointer_cast<StringObject>(args[index])->value;
-}
-
-
-void load_libs(Interpreter& interpreter) {
-    
-    class PrintFunc : public FunctionObject {
-    public:
-        PrintFunc() : FunctionObject({"msg"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            for(const auto& arg : args) std::cout << arg->toString() << " ";
-            std::cout << std::endl;
+std::shared_ptr<ULangObject> ListObject::getMethod(const std::string& name) {
+    if (name == "append") {
+        return std::make_shared<BuiltinFunction>("append", [this](Interpreter& i, const std::vector<std::shared_ptr<ULangObject>>& args) {
+            if (args.size() != 1) throw_runtime_error("append expects 1 argument.");
+            this->elements.push_back(args[0]);
             return VOID_INSTANCE;
-        }
-    };
-    interpreter.define("print", std::make_shared<PrintFunc>());
-
-    class InputFunc : public FunctionObject {
-    public:
-        InputFunc() : FunctionObject({"prompt"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            if (!args.empty()) std::cout << args[0]->toString();
-            std::string in;
-            std::getline(std::cin, in);
-            return std::make_shared<StringObject>(in);
-        }
-    };
-    interpreter.define("input", std::make_shared<InputFunc>());
-    
-    class ToNumberFunc : public FunctionObject {
-    public:
-        ToNumberFunc() : FunctionObject({"str"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            try {
-                std::string s = get_string_arg_safe(args, 0, "to_number"); 
-                size_t pos;
-                double val = std::stod(s, &pos);
-                if (pos != s.length()) throw std::invalid_argument("not a full number");
-                return std::make_shared<NumberObject>(val);
-            } catch (const std::exception& e) {
-                return std::make_shared<NumberObject>(0.0);
-            }
-        }
-    };
-    interpreter.define("to_number", std::make_shared<ToNumberFunc>());
-
-    
-    class MathAbs : public FunctionObject {
-    public:
-        MathAbs() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "abs"); 
-            return std::make_shared<NumberObject>(std::fabs(x));
-        }
-    };
-    interpreter.define("abs", std::make_shared<MathAbs>());
-
-    class MathCeil : public FunctionObject {
-    public:
-        MathCeil() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "ceil"); 
-            return std::make_shared<NumberObject>(std::ceil(x));
-        }
-    };
-    interpreter.define("ceil", std::make_shared<MathCeil>());
-
-    class MathFloor : public FunctionObject {
-    public:
-        MathFloor() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "floor"); 
-            return std::make_shared<NumberObject>(std::floor(x));
-        }
-    };
-    interpreter.define("floor", std::make_shared<MathFloor>());
-
-    class MathTrunc : public FunctionObject {
-    public:
-        MathTrunc() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "trunc"); 
-            return std::make_shared<NumberObject>(std::trunc(x));
-        }
-    };
-    interpreter.define("trunc", std::make_shared<MathTrunc>());
-
-    class MathRound : public FunctionObject {
-    public:
-        MathRound() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "round"); 
-            return std::make_shared<NumberObject>(std::round(x));
-        }
-    };
-    interpreter.define("round", std::make_shared<MathRound>());
-
-    class MathFmod : public FunctionObject {
-    public:
-        MathFmod() : FunctionObject({"x", "y"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "fmod"); 
-            double y = get_number_arg_safe(args, 1, "fmod"); 
-            return std::make_shared<NumberObject>(std::fmod(x, y));
-        }
-    };
-    interpreter.define("fmod", std::make_shared<MathFmod>());
-
-    class MathLog : public FunctionObject {
-    public:
-        MathLog() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "log");
-            return std::make_shared<NumberObject>(std::log(x));
-        }
-    };
-    interpreter.define("log", std::make_shared<MathLog>());
-
-    class MathLog10 : public FunctionObject {
-    public:
-        MathLog10() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "log10"); 
-            return std::make_shared<NumberObject>(std::log10(x));
-        }
-    };
-    interpreter.define("log10", std::make_shared<MathLog10>());
-
-    class MathSin : public FunctionObject {
-    public:
-        MathSin() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "sin"); 
-            return std::make_shared<NumberObject>(std::sin(x));
-        }
-    };
-    interpreter.define("sin", std::make_shared<MathSin>());
-
-    class MathCos : public FunctionObject {
-    public:
-        MathCos() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "cos"); 
-            return std::make_shared<NumberObject>(std::cos(x));
-        }
-    };
-    interpreter.define("cos", std::make_shared<MathCos>());
-
-    class MathTan : public FunctionObject {
-    public:
-        MathTan() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "tan"); 
-            return std::make_shared<NumberObject>(std::tan(x));
-        }
-    };
-    interpreter.define("tan", std::make_shared<MathTan>());
-    
-    class MathAtan : public FunctionObject {
-    public:
-        MathAtan() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "atan");
-            return std::make_shared<NumberObject>(std::atan(x));
-        }
-    };
-    interpreter.define("atan", std::make_shared<MathAtan>());
-
-    class MathAcos : public FunctionObject {
-    public:
-        MathAcos() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "acos"); 
-            return std::make_shared<NumberObject>(std::acos(x));
-        }
-    };
-    interpreter.define("acos", std::make_shared<MathAcos>());
-
-    class MathAsin : public FunctionObject {
-    public:
-        MathAsin() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double x = get_number_arg_safe(args, 0, "asin");
-            return std::make_shared<NumberObject>(std::asin(x));
-        }
-    };
-    interpreter.define("asin", std::make_shared<MathAsin>());
-
-    class MathPow : public FunctionObject {
-    public:
-        MathPow() : FunctionObject({"base", "exp"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double b = get_number_arg_safe(args, 0, "pow"); 
-            double e = get_number_arg_safe(args, 1, "pow"); 
-            return std::make_shared<NumberObject>(std::pow(b, e));
-        }
-    };
-    interpreter.define("pow", std::make_shared<MathPow>());
-
-    class MathSqrt : public FunctionObject {
-    public:
-        MathSqrt() : FunctionObject({"x"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            double val = get_number_arg_safe(args, 0, "sqrt"); 
-            return std::make_shared<NumberObject>(std::sqrt(val));
-        }
-    };
-    interpreter.define("sqrt", std::make_shared<MathSqrt>());
-
-    class StrConcat : public FunctionObject {
-    public:
-        StrConcat() : FunctionObject({"s1", "s2"}, {}) {} 
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            std::string res = "";
-            for(const auto& arg : args) res += arg->toString();
-            return std::make_shared<StringObject>(res);
-        }
-    };
-    interpreter.define("concat", std::make_shared<StrConcat>());
-
-    class StrLen : public FunctionObject {
-    public:
-        StrLen() : FunctionObject({"s"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            std::string s = get_string_arg_safe(args, 0, "len");
-            return std::make_shared<NumberObject>((double)s.length());
-        }
-    };
-    interpreter.define("len", std::make_shared<StrLen>());
-    
-    class StrSubstr : public FunctionObject {
-    public:
-        StrSubstr() : FunctionObject({"s", "start", "len"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            std::string s = get_string_arg_safe(args, 0, "substr"); 
-            double start_d = get_number_arg_safe(args, 1, "substr"); 
-            double len_d = get_number_arg_safe(args, 2, "substr"); 
-            
-            size_t start = (size_t)std::max(0.0, std::round(start_d));
-            size_t len = (size_t)std::max(0.0, std::round(len_d));
-            
-            if (start >= s.length()) return std::make_shared<StringObject>("");
-            
-            return std::make_shared<StringObject>(s.substr(start, len));
-        }
-    };
-    interpreter.define("substr", std::make_shared<StrSubstr>());
-
-    class StrFind : public FunctionObject {
-    public:
-        StrFind() : FunctionObject({"s", "search_str"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            std::string s = get_string_arg_safe(args, 0, "find"); 
-            std::string search = get_string_arg_safe(args, 1, "find"); 
-            
-            size_t pos = s.find(search);
-            
-            if (pos == std::string::npos) return std::make_shared<NumberObject>(-1);
-            
-            return std::make_shared<NumberObject>((double)pos);
-        }
-    };
-    interpreter.define("find", std::make_shared<StrFind>());
-
-    class StrReplace : public FunctionObject {
-    public:
-        StrReplace() : FunctionObject({"s", "start", "count", "replacement"}, {}) {}
-        std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) override {
-            std::string s = get_string_arg_safe(args, 0, "replace");
-            double start_d = get_number_arg_safe(args, 1, "replace"); 
-            double count_d = get_number_arg_safe(args, 2, "replace"); 
-            std::string replacement = get_string_arg_safe(args, 3, "replace"); 
-
-            size_t start = (size_t)std::max(0.0, std::round(start_d));
-            size_t count = (size_t)std::max(0.0, std::round(count_d));
-            
-            if (start > s.length()) start = s.length();
-            if (start + count > s.length()) count = s.length() - start;
-
-            s.replace(start, count, replacement);
-            return std::make_shared<StringObject>(s);
-        }
-    };
-    interpreter.define("replace", std::make_shared<StrReplace>());
-}
-
-
-// =======================================================
-// PARSER IMPLEMENTATION
-// =======================================================
-
-std::shared_ptr<ASTNode> parse_expression(const std::vector<Token>& tokens, size_t& current);
-std::shared_ptr<ASTNode> parse_comparison(const std::vector<Token>& tokens, size_t& current);
-std::shared_ptr<ASTNode> parse_term(const std::vector<Token>& tokens, size_t& current);
-std::shared_ptr<ASTNode> parse_factor(const std::vector<Token>& tokens, size_t& current);
-
-void expect(const std::vector<Token>& tokens, size_t& current, TokenType expected) {
-    if (tokens[current].type != expected) {
-        current_line = tokens[current].line;
-        current_column = tokens[current].column;
-        
-        std::string expectedName;
-        if (expected == TOK_LBRACE) expectedName = "'{'";
-        else if (expected == TOK_RBRACE) expectedName = "'}'";
-        else if (expected == TOK_RPAREN) expectedName = "')'";
-        else if (expected == TOK_EOF) expectedName = "end of file";
-        else if (expected == TOK_EQUALS) expectedName = "'='";
-        else if (expected == TOK_COMMA) expectedName = "','";
-        else expectedName = "expected token type";
-
-        throw_parser_error("Unexpected token: '" + tokens[current].text + "'. Expected: " + expectedName);
+        });
     }
-    current++;
-}
-
-std::shared_ptr<ASTNode> parse_block(const std::vector<Token>& tokens, size_t& current) {
-    expect(tokens, current, TOK_LBRACE);
-    std::vector<std::shared_ptr<ASTNode>> statements;
-    while (tokens[current].type != TOK_RBRACE && tokens[current].type != TOK_EOF) {
-        statements.push_back(parse_expression(tokens, current));
+    if (name == "pop") {
+        return std::make_shared<BuiltinFunction>("pop", [this](Interpreter& i, const std::vector<std::shared_ptr<ULangObject>>& args) {
+            if (this->elements.empty()) throw_runtime_error("Pop from empty list.");
+            auto val = this->elements.back();
+            this->elements.pop_back();
+            return val;
+        });
     }
-    expect(tokens, current, TOK_RBRACE);
-    return std::make_shared<Block>(statements);
-}
-
-std::shared_ptr<ASTNode> parse_if(const std::vector<Token>& tokens, size_t& current) {
-    expect(tokens, current, TOK_IF);
-    expect(tokens, current, TOK_LPAREN);
-    std::shared_ptr<ASTNode> condition = parse_comparison(tokens, current);
-    expect(tokens, current, TOK_RPAREN);
-
-    expect(tokens, current, TOK_IN);
-    expect(tokens, current, TOK_THAT);
-    expect(tokens, current, TOK_CASE);
-
-    std::shared_ptr<ASTNode> thenBlock = parse_block(tokens, current);
-    std::shared_ptr<ASTNode> elseBlock = nullptr;
-
-    if (tokens[current].type == TOK_ELSE) {
-        current++;
-        elseBlock = parse_block(tokens, current);
-    }
-    return std::make_shared<IfStatement>(condition, thenBlock, elseBlock);
-}
-
-std::shared_ptr<ASTNode> parse_while(const std::vector<Token>& tokens, size_t& current) {
-    expect(tokens, current, TOK_WHILE);
-    expect(tokens, current, TOK_LPAREN);
-    std::shared_ptr<ASTNode> condition = parse_comparison(tokens, current);
-    expect(tokens, current, TOK_RPAREN);
-
-    std::shared_ptr<ASTNode> body = parse_block(tokens, current);
-    return std::make_shared<WhileLoop>(condition, body);
-}
-
-
-std::shared_ptr<ASTNode> parse_expression(const std::vector<Token>& tokens, size_t& current) {
-    if (tokens[current].type == TOK_IF) return parse_if(tokens, current);
-    if (tokens[current].type == TOK_WHILE) return parse_while(tokens, current);
-
-    if (tokens[current].type == TOK_ID) {
-        std::string name = tokens[current].text;
-        size_t next_token = current + 1; // Peek ahead
-
-        if (next_token < tokens.size() && tokens[next_token].type == TOK_EQUALS) { 
-            current += 2; // Consume ID and =
-            std::shared_ptr<ASTNode> value = parse_comparison(tokens, current);
-            return std::make_shared<Assignment>(name, value);
-        }
-        else if (next_token < tokens.size() && tokens[next_token].type == TOK_LPAREN) { 
-            current++; // Consume ID
-            current++; // Consume (
-            
-            std::vector<std::shared_ptr<ASTNode>> args;
-            while (tokens[current].type != TOK_RPAREN && tokens[current].type != TOK_EOF) {
-                args.push_back(parse_comparison(tokens, current));
-                if (tokens[current].type == TOK_COMMA) current++;
-            }
-            expect(tokens, current, TOK_RPAREN);
-            return std::make_shared<FunctionCall>(name, args);
-        }
-    }
-    return parse_comparison(tokens, current);
-}
-
-
-std::shared_ptr<ASTNode> parse_comparison(const std::vector<Token>& tokens, size_t& current) {
-    std::shared_ptr<ASTNode> left = parse_term(tokens, current);
-    while (tokens[current].type == TOK_EE || tokens[current].type == TOK_NE || tokens[current].type == TOK_LT || tokens[current].type == TOK_GT) {
-        std::string op = tokens[current].text;
-        current++;
-        std::shared_ptr<ASTNode> right = parse_term(tokens, current);
-        left = std::make_shared<BinaryOp>(op, left, right);
-    }
-    return left;
-}
-
-std::shared_ptr<ASTNode> parse_term(const std::vector<Token>& tokens, size_t& current) {
-    std::shared_ptr<ASTNode> left = parse_factor(tokens, current);
-    while (tokens[current].type == TOK_PLUS || tokens[current].type == TOK_MINUS) {
-        std::string op = tokens[current].text;
-        current++;
-        std::shared_ptr<ASTNode> right = parse_factor(tokens, current);
-        left = std::make_shared<BinaryOp>(op, left, right);
-    }
-    return left;
-}
-/* 
-Hi. If you're reading this you might wonder why I did this? 
-Well, here's your answer ;
-    1 - I don't have a girlfriend.
-    2 - I hate my life because I code in C/C++ and Assembly. Sometimes Fortran.
-    3 - Yes, I do know Fortran and Assembly. Thats the reason why this fucking lang has "in that case" in if block.
-    4 - I don't have j*b.
-    5 - I have ADD
-*/
-std::shared_ptr<ASTNode> parse_factor(const std::vector<Token>& tokens, size_t& current) {
-    if (tokens[current].type == TOK_NUMBER) {
-        double val = std::stod(tokens[current].text);
-        current++;
-        return std::make_shared<NumberLiteral>(val);
-    }
-    if (tokens[current].type == TOK_STRING_LIT) {
-        std::string val = tokens[current].text;
-        current++;
-        return std::make_shared<StringLiteral>(val);
-    }
-    if (tokens[current].type == TOK_ID) {
-        std::string name = tokens[current].text;
-        current++;
-        return std::make_shared<Identifier>(name);
-    }
-    if (tokens[current].type == TOK_LPAREN) {
-        current++;
-        std::shared_ptr<ASTNode> expr = parse_comparison(tokens, current);
-        expect(tokens, current, TOK_RPAREN);
-        return expr;
-    }
-    
-    current_line = tokens[current].line;
-    current_column = tokens[current].column;
-    throw_parser_error("Unexpected token. Expression expected: '" + tokens[current].text + "'");
     return nullptr;
 }
 
-std::vector<std::shared_ptr<ASTNode>> parse(const std::vector<Token>& tokens) {
-    std::vector<std::shared_ptr<ASTNode>> program;
-    size_t current = 0;
-    while (tokens[current].type != TOK_EOF) {
-        program.push_back(parse_expression(tokens, current));
-    }
-    return program;
-}
-
-// =======================================================
-// MAIN EXECUTION
-// =======================================================
-
-void runFile(const std::string& path) {
-    std::ifstream file(path);
-    if (!file.is_open()) {
-        std::cerr << "ERROR: File '" << path << "' not found." << std::endl;
-        return;
-    }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string source = buffer.str();
+std::shared_ptr<ULangObject> FunctionObject::call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) {
+    interpreter.pushEnv();
+    if (receiver) interpreter.enterInstanceContext(receiver);
     
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (i < args.size()) interpreter.define(params[i], args[i]);
+    }
+
+    std::shared_ptr<ULangObject> result = VOID_INSTANCE;
     try {
-        std::vector<Token> tokens = tokenize(source);
-        std::vector<std::shared_ptr<ASTNode>> program = parse(tokens);
-        
-        Interpreter interpreter;
-        load_libs(interpreter);
-        interpreter.execute(program);
+        result = interpreter.executeBlock(body);
+    } catch (std::shared_ptr<ULangObject> retVal) {
+        result = retVal;
+    } catch (...) {
+        if (receiver) interpreter.exitInstanceContext();
+        interpreter.popEnv();
+        throw;
     }
-    catch (const ULangError& e) {
-        std::cerr << e.getFullMessage() << std::endl; 
-    }
-    catch (const std::exception& e) {
-        std::cerr << "INTERNAL ERROR: " << e.what() << std::endl;
-    }
+
+    if (receiver) interpreter.exitInstanceContext();
+    interpreter.popEnv();
+    return result;
 }
+
+std::shared_ptr<ULangObject> Interpreter::executeBlock(const std::vector<std::shared_ptr<ASTNode>>& statements) {
+    std::shared_ptr<ULangObject> result = VOID_INSTANCE;
+    for (const auto& stmt : statements) {
+        result = stmt->evaluate(*this);
+    }
+    return result;
+}
+
+void Interpreter::loadLibs() {
+    define("output", std::make_shared<BuiltinFunction>("output", [](Interpreter&, const std::vector<std::shared_ptr<ULangObject>>& args) {
+        for (auto& arg : args) std::cout << arg->toString() << " ";
+        std::cout << std::endl;
+        return VOID_INSTANCE;
+    }));
+    define("len", std::make_shared<BuiltinFunction>("len", [](Interpreter&, const std::vector<std::shared_ptr<ULangObject>>& args) {
+        if (args.size() != 1) throw_runtime_error("len expects 1 argument");
+        if (args[0]->type == ULangObject::LIST) return std::make_shared<NumberObject>((double)std::static_pointer_cast<ListObject>(args[0])->elements.size());
+        if (args[0]->type == ULangObject::STRING) return std::make_shared<NumberObject>((double)std::static_pointer_cast<StringObject>(args[0])->value.length());
+        return std::make_shared<NumberObject>(0.0);
+    }));
+    define("floor", std::make_shared<BuiltinFunction>("floor", [](Interpreter&, const std::vector<std::shared_ptr<ULangObject>>& args) {
+        if (args.empty() || args[0]->type != ULangObject::NUMBER) throw_runtime_error("floor expects number");
+        return std::make_shared<NumberObject>(std::floor(std::static_pointer_cast<NumberObject>(args[0])->value));
+    }));
+    define("pow", std::make_shared<BuiltinFunction>("pow", [](Interpreter&, const std::vector<std::shared_ptr<ULangObject>>& args) {
+        if (args.size() != 2) throw_runtime_error("pow expects 2 arguments");
+        return std::make_shared<NumberObject>(std::pow(args[0]->toDouble(), args[1]->toDouble()));
+    }));
+    define("drawGraph", std::make_shared<BuiltinFunction>("drawGraph", [](Interpreter&, const std::vector<std::shared_ptr<ULangObject>>& args) {
+        if (args.empty() || args[0]->type != ULangObject::LIST) throw_runtime_error("drawGraph expects a list");
+        auto list = std::static_pointer_cast<ListObject>(args[0]);
+        std::cout << "\n--- GRAPH ---\n";
+        for (auto& item : list->elements) {
+            if (item->type == ULangObject::NUMBER) {
+                int val = (int)item->toDouble();
+                std::cout << val << " | ";
+                for(int k=0; k<val; ++k) std::cout << "*";
+                std::cout << "\n";
+            }
+        }
+        return VOID_INSTANCE;
+    }));
+}
+
+class NumberNode : public ASTNode {
+    double value;
+public:
+    NumberNode(double v) : value(v) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        return std::make_shared<NumberObject>(value);
+    }
+};
+
+class StringNode : public ASTNode {
+    std::string value;
+public:
+    StringNode(std::string v) : value(v) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        return std::make_shared<StringObject>(value);
+    }
+};
+
+class VariableNode : public ASTNode {
+public:
+    std::string name;
+    VariableNode(std::string n) : name(n) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        return interpreter.lookup(name);
+    }
+};
+
+class BinaryOpNode : public ASTNode {
+    std::string op;
+    std::shared_ptr<ASTNode> left, right;
+public:
+    BinaryOpNode(std::string o, std::shared_ptr<ASTNode> l, std::shared_ptr<ASTNode> r) : op(o), left(l), right(r) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        auto l = left->evaluate(interpreter);
+        auto r = right->evaluate(interpreter);
+        if (op == "==") return std::make_shared<BooleanObject>(l->toString() == r->toString());
+        if (op == "!=") return std::make_shared<BooleanObject>(l->toString() != r->toString());
+        
+        if (l->type == ULangObject::NUMBER && r->type == ULangObject::NUMBER) {
+            double v1 = l->toDouble();
+            double v2 = r->toDouble();
+            if (op == "+") return std::make_shared<NumberObject>(v1 + v2);
+            if (op == "-") return std::make_shared<NumberObject>(v1 - v2);
+            if (op == "*") return std::make_shared<NumberObject>(v1 * v2);
+            if (op == "/") return std::make_shared<NumberObject>(v1 / v2);
+            if (op == "%") return std::make_shared<NumberObject>(std::fmod(v1, v2));
+            if (op == "<") return std::make_shared<BooleanObject>(v1 < v2);
+            if (op == ">") return std::make_shared<BooleanObject>(v1 > v2);
+        }
+        if (op == "+") return std::make_shared<StringObject>(l->toString() + r->toString());
+        throw_runtime_error("Invalid binary operation");
+        return VOID_INSTANCE;
+    }
+};
+
+class AssignmentNode : public ASTNode {
+    std::string name;
+    std::shared_ptr<ASTNode> value;
+public:
+    AssignmentNode(std::string n, std::shared_ptr<ASTNode> v) : name(n), value(v) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        auto res = value->evaluate(interpreter);
+        try {
+            interpreter.assign(name, res);
+        } catch(...) {
+            interpreter.define(name, res);
+        }
+        return res;
+    }
+};
+
+class VarDeclNode : public ASTNode {
+    std::string name;
+    std::shared_ptr<ASTNode> value;
+public:
+    VarDeclNode(std::string n, std::shared_ptr<ASTNode> v) : name(n), value(v) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        auto res = value->evaluate(interpreter);
+        interpreter.define(name, res);
+        return res;
+    }
+};
+
+class BlockNode : public ASTNode {
+public:
+    std::vector<std::shared_ptr<ASTNode>> statements;
+    BlockNode(std::vector<std::shared_ptr<ASTNode>> s) : statements(s) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        return interpreter.executeBlock(statements);
+    }
+};
+
+class IfNode : public ASTNode {
+    std::shared_ptr<ASTNode> condition, thenBlock, elseBlock;
+public:
+    IfNode(std::shared_ptr<ASTNode> c, std::shared_ptr<ASTNode> t, std::shared_ptr<ASTNode> e) : condition(c), thenBlock(t), elseBlock(e) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        if (condition->evaluate(interpreter)->isTruthy()) return thenBlock->evaluate(interpreter);
+        else if (elseBlock) return elseBlock->evaluate(interpreter);
+        return VOID_INSTANCE;
+    }
+};
+
+class WhileNode : public ASTNode {
+    std::shared_ptr<ASTNode> condition, body;
+public:
+    WhileNode(std::shared_ptr<ASTNode> c, std::shared_ptr<ASTNode> b) : condition(c), body(b) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        while (condition->evaluate(interpreter)->isTruthy()) {
+            body->evaluate(interpreter);
+        }
+        return VOID_INSTANCE;
+    }
+};
+
+class ForNode : public ASTNode {
+    std::string varName;
+    std::shared_ptr<ASTNode> iterator, body;
+public:
+    ForNode(std::string v, std::shared_ptr<ASTNode> i, std::shared_ptr<ASTNode> b) : varName(v), iterator(i), body(b) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        auto listObj = iterator->evaluate(interpreter);
+        if (listObj->type != ULangObject::LIST) throw_runtime_error("For loop expects list");
+        auto list = std::static_pointer_cast<ListObject>(listObj);
+        interpreter.pushEnv();
+        interpreter.define(varName, VOID_INSTANCE);
+        for (auto& elem : list->elements) {
+            interpreter.assign(varName, elem);
+            body->evaluate(interpreter);
+        }
+        interpreter.popEnv();
+        return VOID_INSTANCE;
+    }
+};
+
+class CallNode : public ASTNode {
+    std::shared_ptr<ASTNode> callee;
+    std::vector<std::shared_ptr<ASTNode>> args;
+public:
+    CallNode(std::shared_ptr<ASTNode> c, std::vector<std::shared_ptr<ASTNode>> a) : callee(c), args(a) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        auto func = callee->evaluate(interpreter);
+        std::vector<std::shared_ptr<ULangObject>> evalArgs;
+        for(auto& a : args) evalArgs.push_back(a->evaluate(interpreter));
+        
+        if (func->type == ULangObject::FUNCTION) return std::static_pointer_cast<FunctionObject>(func)->call(interpreter, evalArgs);
+        if (func->type == ULangObject::BUILTIN) return std::static_pointer_cast<BuiltinFunction>(func)->call(interpreter, evalArgs);
+        if (func->type == ULangObject::CLASS) {
+            auto klass = std::static_pointer_cast<ClassObject>(func);
+            auto instance = std::make_shared<InstanceObject>(klass);
+            if (klass->methods.count("__init__")) {
+                auto init = klass->methods.at("__init__")->bind(instance);
+                init->call(interpreter, evalArgs);
+            }
+            return instance;
+        }
+        throw_runtime_error("Not callable");
+        return VOID_INSTANCE;
+    }
+};
+
+class InstanceCreation : public ASTNode {
+    std::string className;
+    std::vector<std::shared_ptr<ASTNode>> args;
+public:
+    InstanceCreation(std::string c, std::vector<std::shared_ptr<ASTNode>> a) : className(c), args(a) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        auto classObj = interpreter.lookup(className);
+        if (classObj->type != ULangObject::CLASS) throw_runtime_error("Not a class");
+        auto klass = std::static_pointer_cast<ClassObject>(classObj);
+        auto instance = std::make_shared<InstanceObject>(klass);
+        std::vector<std::shared_ptr<ULangObject>> evalArgs;
+        for(auto& a : args) evalArgs.push_back(a->evaluate(interpreter));
+        if (klass->methods.count("__init__")) {
+            auto init = klass->methods.at("__init__")->bind(instance);
+            init->call(interpreter, evalArgs);
+        }
+        return instance;
+    }
+};
+
+class ReturnNode : public ASTNode {
+    std::shared_ptr<ASTNode> value;
+public:
+    ReturnNode(std::shared_ptr<ASTNode> v) : value(v) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        auto res = value ? value->evaluate(interpreter) : VOID_INSTANCE;
+        throw res; 
+    }
+};
+
+class FunctionDeclNode : public ASTNode {
+    std::string name;
+    std::vector<std::string> params;
+    std::shared_ptr<ASTNode> body;
+public:
+    FunctionDeclNode(std::string n, std::vector<std::string> p, std::shared_ptr<ASTNode> b) : name(n), params(p), body(b) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        std::vector<std::shared_ptr<ASTNode>> stmts;
+        if (auto b = std::dynamic_pointer_cast<BlockNode>(body)) stmts = b->statements; 
+        else stmts.push_back(body);
+        
+        auto func = std::make_shared<FunctionObject>(params, stmts);
+        interpreter.define(name, func);
+        return func;
+    }
+};
+
+class ClassNode : public ASTNode {
+    std::string name;
+    std::map<std::string, std::shared_ptr<FunctionObject>> methods;
+public:
+    ClassNode(std::string n, std::map<std::string, std::shared_ptr<FunctionObject>> m) : name(n), methods(m) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        interpreter.define(name, std::make_shared<ClassObject>(name, methods));
+        return VOID_INSTANCE;
+    }
+};
+
+class PropertyGetNode : public ASTNode {
+public:
+    std::shared_ptr<ASTNode> obj;
+    std::string prop;
+    PropertyGetNode(std::shared_ptr<ASTNode> o, std::string p) : obj(o), prop(p) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        auto o = obj->evaluate(interpreter);
+        if(o->type == ULangObject::INSTANCE) return std::static_pointer_cast<InstanceObject>(o)->getProperty(prop);
+        if(o->type == ULangObject::LIST) return std::static_pointer_cast<ListObject>(o)->getMethod(prop);
+        throw_runtime_error("Property access on invalid object");
+        return VOID_INSTANCE;
+    }
+};
+
+class PropertySetNode : public ASTNode {
+    std::shared_ptr<ASTNode> obj, val;
+    std::string prop;
+public:
+    PropertySetNode(std::shared_ptr<ASTNode> o, std::string p, std::shared_ptr<ASTNode> v) : obj(o), prop(p), val(v) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        auto o = obj->evaluate(interpreter);
+        auto v = val->evaluate(interpreter);
+        if(o->type == ULangObject::INSTANCE) {
+            std::static_pointer_cast<InstanceObject>(o)->setProperty(prop, v);
+            return v;
+        }
+        throw_runtime_error("Property set on invalid object");
+        return VOID_INSTANCE;
+    }
+};
+
+class ListNode : public ASTNode {
+    std::vector<std::shared_ptr<ASTNode>> elements;
+public:
+    ListNode(std::vector<std::shared_ptr<ASTNode>> e) : elements(e) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        std::vector<std::shared_ptr<ULangObject>> values;
+        for(auto& e : elements) values.push_back(e->evaluate(interpreter));
+        return std::make_shared<ListObject>(values);
+    }
+};
+
+class TryCatchNode : public ASTNode {
+    std::shared_ptr<ASTNode> tryBlock, catchBlock;
+    std::string catchVar;
+public:
+    TryCatchNode(std::shared_ptr<ASTNode> t, std::string v, std::shared_ptr<ASTNode> c) : tryBlock(t), catchVar(v), catchBlock(c) {}
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        try {
+            return tryBlock->evaluate(interpreter);
+        } catch (const std::exception& e) { 
+            interpreter.pushEnv();
+            interpreter.define(catchVar, std::make_shared<StringObject>(e.what()));
+            auto res = catchBlock->evaluate(interpreter);
+            interpreter.popEnv();
+            return res;
+        } catch (std::shared_ptr<ULangObject> e) { 
+             interpreter.pushEnv();
+             interpreter.define(catchVar, e);
+             auto res = catchBlock->evaluate(interpreter);
+             interpreter.popEnv();
+             return res;
+        }
+    }
+};
+
+class ThisNode : public ASTNode {
+public:
+    std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
+        if (interpreter.current_instance) return interpreter.current_instance;
+        throw_runtime_error("this used outside of instance");
+        return VOID_INSTANCE;
+    }
+};
+
+class Parser {
+    std::vector<Token> tokens;
+    int pos = 0;
+public:
+    Parser(std::vector<Token> t) : tokens(t) {}
+    
+    Token peek() { return tokens[pos]; }
+    bool isAtEnd() { return peek().type == TOK_EOF; }
+    Token advance() { if (!isAtEnd()) pos++; return tokens[pos-1]; }
+    bool check(TokenType t) { return !isAtEnd() && peek().type == t; }
+    Token consume(TokenType t, std::string msg) { if (check(t)) return advance(); throw_parser_error(msg); return tokens[0]; }
+
+    std::vector<std::shared_ptr<ASTNode>> parse() {
+        std::vector<std::shared_ptr<ASTNode>> stmts;
+        while (!isAtEnd()) stmts.push_back(declaration());
+        return stmts;
+    }
+
+    std::shared_ptr<ASTNode> declaration() {
+        if (check(TOK_FUNCTION)) return functionDecl();
+        if (check(TOK_CLASS)) return classDecl();
+        return statement();
+    }
+
+    std::shared_ptr<ASTNode> classDecl() {
+        consume(TOK_CLASS, "Expect class");
+        std::string name = consume(TOK_ID, "Expect class name").text;
+        consume(TOK_LBRACE, "Expect {");
+        std::map<std::string, std::shared_ptr<FunctionObject>> methods;
+        while(!check(TOK_RBRACE) && !isAtEnd()) {
+            std::string mName = consume(TOK_ID, "Expect method name").text;
+            consume(TOK_LPAREN, "Expect (");
+            std::vector<std::string> params;
+            if (!check(TOK_RPAREN)) {
+                do { params.push_back(consume(TOK_ID, "Param name").text); } while(check(TOK_COMMA) && advance().type == TOK_COMMA);
+            }
+            consume(TOK_RPAREN, "Expect )");
+            consume(TOK_LBRACE, "Expect {");
+            auto body = block();
+            std::vector<std::shared_ptr<ASTNode>> bodyStmts;
+            if (auto b = std::dynamic_pointer_cast<BlockNode>(body)) {
+                bodyStmts = b->statements;
+            } else {
+                bodyStmts.push_back(body);
+            }
+            methods[mName] = std::make_shared<FunctionObject>(params, bodyStmts); 
+        }
+        consume(TOK_RBRACE, "Expect }");
+        return std::make_shared<ClassNode>(name, methods);
+    }
+
+    std::shared_ptr<ASTNode> functionDecl() {
+        consume(TOK_FUNCTION, "Expect function");
+        std::string name = consume(TOK_ID, "Expect name").text;
+        consume(TOK_LPAREN, "Expect (");
+        std::vector<std::string> params;
+        if (!check(TOK_RPAREN)) {
+            do { params.push_back(consume(TOK_ID, "Param").text); } while(check(TOK_COMMA) && advance().type == TOK_COMMA);
+        }
+        consume(TOK_RPAREN, "Expect )");
+        consume(TOK_LBRACE, "Expect {");
+        return std::make_shared<FunctionDeclNode>(name, params, block());
+    }
+
+    std::shared_ptr<ASTNode> statement() {
+        if (check(TOK_IF)) return ifStmt();
+        if (check(TOK_WHILE)) return whileStmt();
+        if (check(TOK_FOR)) return forStmt();
+        if (check(TOK_RETURN)) return returnStmt();
+        if (check(TOK_TRY)) return tryStmt();
+        if (check(TOK_LBRACE)) { consume(TOK_LBRACE, "{"); return block(); }
+        auto expr = expression();
+        if (check(TOK_SEMICOLON)) advance();
+        return expr;
+    }
+
+    std::shared_ptr<ASTNode> ifStmt() {
+        consume(TOK_IF, "Expect if");
+        consume(TOK_LPAREN, "Expect (");
+        auto cond = expression();
+        consume(TOK_RPAREN, "Expect )");
+        if (check(TOK_IN)) { advance(); consume(TOK_THAT, "that"); consume(TOK_CASE, "case"); }
+        consume(TOK_LBRACE, "Expect {");
+        auto thenB = block();
+        std::shared_ptr<ASTNode> elseB = nullptr;
+        if (check(TOK_ELSE)) {
+            advance();
+            if (check(TOK_IF)) elseB = ifStmt();
+            else { consume(TOK_LBRACE, "{"); elseB = block(); }
+        }
+        return std::make_shared<IfNode>(cond, thenB, elseB);
+    }
+
+    std::shared_ptr<ASTNode> whileStmt() {
+        consume(TOK_WHILE, "Expect while");
+        consume(TOK_LPAREN, "Expect (");
+        auto cond = expression();
+        consume(TOK_RPAREN, "Expect )");
+        consume(TOK_LBRACE, "Expect {");
+        return std::make_shared<WhileNode>(cond, block());
+    }
+
+    std::shared_ptr<ASTNode> forStmt() {
+        consume(TOK_FOR, "Expect for");
+        std::string var = consume(TOK_ID, "Expect var").text;
+        consume(TOK_IN, "Expect in");
+        auto iter = expression();
+        consume(TOK_LBRACE, "Expect {");
+        return std::make_shared<ForNode>(var, iter, block());
+    }
+
+    std::shared_ptr<ASTNode> returnStmt() {
+        consume(TOK_RETURN, "Expect return");
+        std::shared_ptr<ASTNode> val = nullptr;
+        if (peek().type != TOK_RBRACE && peek().type != TOK_EOF) val = expression();
+        if (check(TOK_SEMICOLON)) advance();
+        return std::make_shared<ReturnNode>(val);
+    }
+
+    std::shared_ptr<ASTNode> tryStmt() {
+        consume(TOK_TRY, "Expect try");
+        consume(TOK_LBRACE, "Expect {");
+        auto tryB = block();
+        consume(TOK_CATCH, "Expect catch");
+        consume(TOK_LPAREN, "Expect (");
+        std::string v = consume(TOK_ID, "Expect var").text;
+        consume(TOK_RPAREN, "Expect )");
+        consume(TOK_LBRACE, "Expect {");
+        auto catchB = block();
+        return std::make_shared<TryCatchNode>(tryB, v, catchB);
+    }
+
+    std::shared_ptr<ASTNode> block() {
+        std::vector<std::shared_ptr<ASTNode>> stmts;
+        while (!check(TOK_RBRACE) && !isAtEnd()) {
+            stmts.push_back(declaration());
+        }
+        consume(TOK_RBRACE, "Expect }");
+        return std::make_shared<BlockNode>(stmts);
+    }
+
+    std::shared_ptr<ASTNode> expression() { return assignment(); }
+
+    std::shared_ptr<ASTNode> assignment() {
+        auto expr = equality();
+        if (check(TOK_EQUALS)) {
+            advance();
+            auto val = assignment();
+            if (auto v = std::dynamic_pointer_cast<VariableNode>(expr)) return std::make_shared<AssignmentNode>(v->name, val); 
+            if (auto p = std::dynamic_pointer_cast<PropertyGetNode>(expr)) return std::make_shared<PropertySetNode>(p->obj, p->prop, val);
+        }
+        return expr;
+    }
+
+    std::shared_ptr<ASTNode> equality() {
+        auto expr = comparison();
+        while (check(TOK_EE) || check(TOK_NE)) {
+            std::string op = advance().text;
+            expr = std::make_shared<BinaryOpNode>(op, expr, comparison());
+        }
+        return expr;
+    }
+
+    std::shared_ptr<ASTNode> comparison() {
+        auto expr = term();
+        while (check(TOK_LT) || check(TOK_GT)) {
+            std::string op = advance().text;
+            expr = std::make_shared<BinaryOpNode>(op, expr, term());
+        }
+        return expr;
+    }
+
+    std::shared_ptr<ASTNode> term() {
+        auto expr = factor();
+        while (check(TOK_PLUS) || check(TOK_MINUS)) {
+            std::string op = advance().text;
+            expr = std::make_shared<BinaryOpNode>(op, expr, factor());
+        }
+        return expr;
+    }
+
+    std::shared_ptr<ASTNode> factor() {
+        auto expr = unary();
+        while (check(TOK_STAR) || check(TOK_SLASH) || check(TOK_PERCENT)) {
+            std::string op = advance().text;
+            expr = std::make_shared<BinaryOpNode>(op, expr, unary());
+        }
+        return expr;
+    }
+
+    std::shared_ptr<ASTNode> unary() { return call(); }
+
+    std::shared_ptr<ASTNode> call() {
+        auto expr = primary();
+        while (true) {
+            if (check(TOK_LPAREN)) {
+                advance();
+                std::vector<std::shared_ptr<ASTNode>> args;
+                if (!check(TOK_RPAREN)) {
+                    do { args.push_back(expression()); } while(check(TOK_COMMA) && advance().type == TOK_COMMA);
+                }
+                consume(TOK_RPAREN, "Expect )");
+                expr = std::make_shared<CallNode>(expr, args);
+            } else if (check(TOK_DOT)) {
+                advance();
+                std::string prop = consume(TOK_ID, "Expect property").text;
+                expr = std::make_shared<PropertyGetNode>(expr, prop);
+            } else {
+                break;
+            }
+        }
+        return expr;
+    }
+
+    std::shared_ptr<ASTNode> primary() {
+        if (check(TOK_NEW)) {
+            advance();
+            std::string className = consume(TOK_ID, "Expect class name").text;
+            consume(TOK_LPAREN, "Expect (");
+            std::vector<std::shared_ptr<ASTNode>> args;
+            if (!check(TOK_RPAREN)) {
+                do { args.push_back(expression()); } while(check(TOK_COMMA) && advance().type == TOK_COMMA);
+            }
+            consume(TOK_RPAREN, "Expect )");
+            return std::make_shared<InstanceCreation>(className, args);
+        }
+        if (check(TOK_FALSE)) { advance(); return std::make_shared<NumberNode>(0); } 
+        if (check(TOK_TRUE)) { advance(); return std::make_shared<NumberNode>(1); }
+        if (check(TOK_NULL)) { advance(); return std::make_shared<StringNode>("null"); } 
+        if (check(TOK_THIS)) { advance(); return std::make_shared<ThisNode>(); }
+        if (check(TOK_NUMBER)) return std::make_shared<NumberNode>(std::stod(advance().text));
+        if (check(TOK_STRING_LIT)) return std::make_shared<StringNode>(advance().text);
+        if (check(TOK_ID)) {
+            return std::make_shared<VariableNode>(advance().text);
+        }
+        if (check(TOK_LPAREN)) {
+            advance();
+            auto expr = expression();
+            consume(TOK_RPAREN, "Expect )");
+            return expr;
+        }
+        if (check(TOK_LBRACKET)) {
+            advance();
+            std::vector<std::shared_ptr<ASTNode>> elems;
+            if (!check(TOK_RBRACKET)) {
+                do { elems.push_back(expression()); } while(check(TOK_COMMA) && advance().type == TOK_COMMA);
+            }
+            consume(TOK_RBRACKET, "Expect ]");
+            return std::make_shared<ListNode>(elems);
+        }
+        throw_parser_error("Expect expression");
+        return nullptr;
+    }
+};
 
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " <script_file.ul>" << std::endl;
-        return 1;
+    if (argc < 2) { std::cerr << "Usage: ulang file.ul\n"; return 1; }
+    std::ifstream f(argv[1]);
+    std::stringstream buff;
+    buff << f.rdbuf();
+    try {
+        auto tokens = tokenize(buff.str());
+        Parser parser(tokens);
+        auto nodes = parser.parse();
+        Interpreter interpreter;
+        interpreter.executeBlock(nodes);
+    } catch (std::exception& e) {
+        std::cerr << e.what() << "\n";
     }
-    runFile(argv[1]);
     return 0;
 }

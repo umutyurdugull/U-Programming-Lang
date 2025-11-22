@@ -1,10 +1,79 @@
-sayac = 2
-toplam = 0
-while(sayac < 5)  {
-    toplam = toplam + sayac
-    sayac = sayac + 1
+function fibonacci(n) {
+    if (n < 2) {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)
 }
-print(toplam)
-pi = 3.14159
-print(pi)
-print(3 != 5)
+
+
+
+
+class Analyzer {
+    __init__(name) {
+        this.name = name
+        this.dataset = []
+    }
+
+    addData(val) {
+        this.dataset.append(val)
+    }
+
+    calculateAverage() {
+        total = 0
+        count = len(this.dataset)
+        
+        -> Liste uzerinde for dongusu testi
+        for item in this.dataset {
+            total = total + item
+        }
+
+        avg = 0
+        if (count > 0) {
+            avg = total / count
+        }
+        return floor(avg)
+    }
+
+    filterEvens() {
+        evens = []
+        for num in this.dataset {
+            if (num % 2 == 0) {
+                evens.append(num)
+            }
+        }
+        return evens
+    }
+}
+
+output("--- ULang Kapsamli Algoritma Testi ---")
+
+stats = new Analyzer("Fibonacci Analizoru")
+
+limit = 12
+i = 0
+
+output("Veri uretiliyor (Recursive Fibonacci)...")
+
+while (i < limit) {
+    val = fibonacci(i)
+   
+    stats.addData(val)
+    i = i + 1
+}
+
+output("Ham Veri Seti:")
+output(stats.dataset)
+
+avgVal = stats.calculateAverage()
+output("Hesaplanan Ortalama (Floor):", avgVal)
+
+evenList = stats.filterEvens()
+output("Filtrelenmis Cift Sayilar:")
+output(evenList)
+output("\nGrafigi Ciziliyor (Ham Veri):")
+drawGraph(stats.dataset)
+
+output("\nGrafigi Ciziliyor (Cift Sayilar):")
+drawGraph(evenList)
+
+output("--- Test Basariyla Tamamlandi ---")

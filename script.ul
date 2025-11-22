@@ -77,3 +77,13 @@ output("\nGrafigi Ciziliyor (Cift Sayilar):")
 drawGraph(evenList)
 
 output("--- Test Basariyla Tamamlandi ---")
+URL = "https://httpbin.org/post";
+BODY = "{\"test\": \"hello\"}";
+HEADERS = ["Content-Type: application/json"];
+
+output("Testing with httpbin.org...");
+
+RESPONSE = http_post(URL, BODY, HEADERS);
+
+output("Response:");
+output(RESPONSE);

@@ -743,7 +743,11 @@ public:
         if (check(TOK_CLASS)) return classDecl();
         return statement();
     }
-
+    /*
+    all alone 
+    alone again
+    alone.
+    */
     std::shared_ptr<ASTNode> classDecl() {
         consume(TOK_CLASS, "Expect class");
         std::string name = consume(TOK_ID, "Expect class name").text;

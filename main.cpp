@@ -13,14 +13,8 @@
 #include <limits>
 #include <functional>
 #include <curl/curl.h>
-
-#ifdef VOID
-#undef VOID
-#endif
-
 int current_line = 1;
 int current_column = 1;
-
 class ULangError : public std::runtime_error {
 public:
     int line;
@@ -32,31 +26,62 @@ public:
         return "ERROR [" + type + "] Line " + std::to_string(line) + ", Column " + std::to_string(column) + ": " + what();
     }
 };
-
 inline void throw_lexer_error(const std::string& msg) { throw ULangError(msg, "Lexer", current_line, current_column); }
 inline void throw_parser_error(const std::string& msg) { throw ULangError(msg, "Parser", current_line, current_column); }
 inline void void_throw_runtime_error(const std::string& msg) { throw ULangError(msg, "Runtime", current_line, current_column); }
 inline void throw_runtime_error(const std::string& msg) { throw ULangError(msg, "Runtime", current_line, current_column); }
-
-enum TokenType {
-    TOK_ID, TOK_NUMBER, TOK_STRING_LIT, TOK_LPAREN, TOK_RPAREN, TOK_COMMA, TOK_EQUALS,
-    TOK_PLUS, TOK_MINUS, TOK_STAR, TOK_SLASH, TOK_PERCENT, TOK_LT, TOK_GT, TOK_EE, TOK_NE,
-    TOK_LBRACE, TOK_RBRACE, TOK_LBRACKET, TOK_RBRACKET, TOK_SEMICOLON,
-    TOK_IF, TOK_ELSE, TOK_WHILE, TOK_FOR, TOK_IN, TOK_THAT, TOK_CASE,
-    TOK_CLASS, TOK_THIS, TOK_DOT, TOK_NEW, TOK_FUNCTION, TOK_RETURN,
-    TOK_TRY, TOK_CATCH, TOK_NULL, TOK_TRUE, TOK_FALSE, TOK_EOF
+enum TokenKind {
+    TOK_ID,
+    TOK_NUMBER,
+    TOK_STRING_LIT,
+    TOK_EQUALS,
+    TOK_PLUS,
+    TOK_MINUS,
+    TOK_STAR,
+    TOK_SLASH,
+    TOK_PERCENT,
+    TOK_LT,
+    TOK_GT,
+    TOK_EE,
+    TOK_NE,
+    TOK_LPAREN,
+    TOK_RPAREN,
+    TOK_LBRACE,
+    TOK_RBRACE,
+    TOK_LBRACKET,
+    TOK_RBRACKET,
+    TOK_COMMA,
+    TOK_DOT,
+    TOK_SEMICOLON,
+    // keywords
+    TOK_IF,
+    TOK_ELSE,
+    TOK_WHILE,
+    TOK_FOR,
+    TOK_IN,
+    TOK_THAT,
+    TOK_CASE,
+    TOK_CLASS,
+    TOK_THIS,
+    TOK_NEW,
+    TOK_FUNCTION,
+    TOK_RETURN,
+    TOK_TRY,
+    TOK_CATCH,
+    TOK_NULL,
+    TOK_TRUE,
+    TOK_FALSE,
+    TOK_EOF
 };
-
 struct Token {
-    TokenType type;
+    TokenKind type;
     std::string text;
     int line;
     int column;
-    Token(TokenType t, const std::string& txt, int l = 0, int c = 0)
+    Token(TokenKind t, const std::string& txt, int l = 0, int c = 0)
         : type(t), text(txt), line(l), column(c) {}
 };
-
-TokenType check_keyword(const std::string& text) {
+TokenKind check_keyword(const std::string& text) {
     if (text == "if") return TOK_IF;
     if (text == "else") return TOK_ELSE;
     if (text == "while") return TOK_WHILE;
@@ -76,7 +101,6 @@ TokenType check_keyword(const std::string& text) {
     if (text == "false") return TOK_FALSE;
     return TOK_ID;
 }
-
 std::vector<Token> tokenize(const std::string& source) {
     std::vector<Token> tokens;
     size_t i = 0;
@@ -181,32 +205,28 @@ std::vector<Token> tokenize(const std::string& source) {
     tokens.push_back(Token(TOK_EOF, "", current_line, current_column));
     return tokens;
 }
-
 class Interpreter;
 class ULangObject;
 class ASTNode;
 class InstanceObject;
-
 class ULangObject : public std::enable_shared_from_this<ULangObject> {
 public:
-    enum Type { NUMBER, STRING, BOOLEAN, FUNCTION, VOID_TYPE, CLASS, INSTANCE, LIST, BUILTIN };
+    enum Type { NUMBER, STRING, BOOLEAN, FUNCTION, VAL_VOID, CLASS, INSTANCE, LIST, BUILTIN };
     Type type;
     ULangObject(Type t) : type(t) {}
     virtual ~ULangObject() = default;
     virtual std::string toString() const = 0;
     virtual double toDouble() const { return 0.0; }
-    virtual bool isTruthy() const { return type != VOID_TYPE && type != BOOLEAN ? true : (type == BOOLEAN ? toDouble() : false); }
+    virtual bool isTruthy() const { return type != VAL_VOID && type != BOOLEAN ? true : (type == BOOLEAN ? toDouble() : false); }
     virtual std::shared_ptr<ULangObject> getMethod(const std::string& name) { return nullptr; }
 };
-
 class VoidObject : public ULangObject {
 public:
-    VoidObject() : ULangObject(VOID_TYPE) {}
+    VoidObject() : ULangObject(VAL_VOID) {}
     std::string toString() const override { return "null"; }
     bool isTruthy() const override { return false; }
 };
 static std::shared_ptr<ULangObject> VOID_INSTANCE = std::make_shared<VoidObject>();
-
 class NumberObject : public ULangObject {
 public:
     double value;
@@ -219,7 +239,6 @@ public:
     double toDouble() const override { return value; }
     bool isTruthy() const override { return value != 0.0; }
 };
-
 class StringObject : public ULangObject {
 public:
     std::string value;
@@ -227,7 +246,6 @@ public:
     std::string toString() const override { return value; }
     bool isTruthy() const override { return !value.empty(); }
 };
-
 class BooleanObject : public ULangObject {
 public:
     bool value;
@@ -236,7 +254,6 @@ public:
     double toDouble() const override { return value ? 1.0 : 0.0; }
     bool isTruthy() const override { return value; }
 };
-
 class FunctionObject : public ULangObject {
 public:
     std::vector<std::string> params;
@@ -250,17 +267,15 @@ public:
     }
     virtual std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args);
 };
-
 class BuiltinFunction : public ULangObject {
 public:
     using FuncType = std::function<std::shared_ptr<ULangObject>(Interpreter&, const std::vector<std::shared_ptr<ULangObject>>&)> ;
     FuncType func;
     std::string name;
-    BuiltinFunction(const std::string& n, FuncType f) : ULangObject(BUILTIN), func(f), name(n) {}
+    BuiltinFunction(const std::string& n, FuncType f) : ULangObject(BUILTIN), name(n), func(f) {}
     std::string toString() const override { return "<builtin " + name + ">"; }
     std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) { return func(interpreter, args); }
 };
-
 class ListObject : public ULangObject {
 public:
     std::vector<std::shared_ptr<ULangObject>> elements;
@@ -275,7 +290,6 @@ public:
     }
     std::shared_ptr<ULangObject> getMethod(const std::string& name) override;
 };
-
 class ClassObject : public ULangObject {
 public:
     std::string name;
@@ -284,7 +298,6 @@ public:
         : ULangObject(CLASS), name(n), methods(m) {}
     std::string toString() const override { return "<class " + name + ">"; }
 };
-
 class InstanceObject : public ULangObject {
 public:
     std::shared_ptr<ClassObject> klass;
@@ -303,30 +316,25 @@ public:
         fields[name] = value;
     }
 };
-
 class ASTNode {
 public:
     virtual ~ASTNode() = default;
     virtual std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) = 0;
 };
-
 class Interpreter {
 public:
     std::map<std::string, std::shared_ptr<ULangObject>> globals;
     std::map<std::string, std::shared_ptr<ULangObject>>* current_env;
     std::vector<std::map<std::string, std::shared_ptr<ULangObject>>> env_stack;
     std::shared_ptr<InstanceObject> current_instance = nullptr;
-
     Interpreter() {
         env_stack.push_back(std::map<std::string, std::shared_ptr<ULangObject>>());
         current_env = &env_stack.back();
         loadLibs();
     }
-
     void define(const std::string& name, std::shared_ptr<ULangObject> val) {
         (*current_env)[name] = val;
     }
-
     void assign(const std::string& name, std::shared_ptr<ULangObject> val) {
         for (auto it = env_stack.rbegin(); it != env_stack.rend(); ++it) {
             if (it->count(name)) {
@@ -336,7 +344,6 @@ public:
         }
         throw_runtime_error("Undefined variable '" + name + "'.");
     }
-
     std::shared_ptr<ULangObject> lookup(const std::string& name) {
         for (auto it = env_stack.rbegin(); it != env_stack.rend(); ++it) {
             if (it->count(name)) return (*it)[name];
@@ -344,33 +351,27 @@ public:
         throw_runtime_error("Undefined variable '" + name + "'.");
         return VOID_INSTANCE;
     }
-
     void pushEnv() {
         env_stack.push_back(std::map<std::string, std::shared_ptr<ULangObject>>());
         current_env = &env_stack.back();
     }
-
     void popEnv() {
         if (env_stack.size() > 1) {
             env_stack.pop_back();
             current_env = &env_stack.back();
         }
     }
-
     void enterInstanceContext(std::shared_ptr<InstanceObject> instance) { current_instance = instance; }
     void exitInstanceContext() { current_instance = nullptr; }
     std::shared_ptr<InstanceObject> getCurrentInstance() { return current_instance; }
-
     void loadLibs();
     std::shared_ptr<ULangObject> executeBlock(const std::vector<std::shared_ptr<ASTNode>>& statements);
 };
-
 size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
     size_t total_size = size * nmemb;
     output->append((char*)contents, total_size);
     return total_size;
 }
-
 std::shared_ptr<ULangObject> ListObject::getMethod(const std::string& name) {
     if (name == "append") {
         return std::make_shared<BuiltinFunction>("append", [this](Interpreter& i, const std::vector<std::shared_ptr<ULangObject>>& args) {
@@ -389,15 +390,12 @@ std::shared_ptr<ULangObject> ListObject::getMethod(const std::string& name) {
     }
     return nullptr;
 }
-
 std::shared_ptr<ULangObject> FunctionObject::call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) {
     interpreter.pushEnv();
     if (receiver) interpreter.enterInstanceContext(receiver);
-
     for (size_t i = 0; i < params.size(); ++i) {
         if (i < args.size()) interpreter.define(params[i], args[i]);
     }
-
     std::shared_ptr<ULangObject> result = VOID_INSTANCE;
     try {
         result = interpreter.executeBlock(body);
@@ -408,12 +406,10 @@ std::shared_ptr<ULangObject> FunctionObject::call(Interpreter& interpreter, cons
         interpreter.popEnv();
         throw;
     }
-
     if (receiver) interpreter.exitInstanceContext();
     interpreter.popEnv();
     return result;
 }
-
 std::shared_ptr<ULangObject> Interpreter::executeBlock(const std::vector<std::shared_ptr<ASTNode>>& statements) {
     std::shared_ptr<ULangObject> result = VOID_INSTANCE;
     for (const auto& stmt : statements) {
@@ -421,7 +417,6 @@ std::shared_ptr<ULangObject> Interpreter::executeBlock(const std::vector<std::sh
     }
     return result;
 }
-
 void Interpreter::loadLibs() {
     define("output", std::make_shared<BuiltinFunction>("output", [](Interpreter&, const std::vector<std::shared_ptr<ULangObject>>& args) {
         for (auto& arg : args) std::cout << arg->toString() << " ";
@@ -459,37 +454,27 @@ void Interpreter::loadLibs() {
     define("http_post", std::make_shared<BuiltinFunction>("http_post", [](Interpreter&, const std::vector<std::shared_ptr<ULangObject>>& args) -> std::shared_ptr<ULangObject> {
         if (args.size() != 3 || args[0]->type != ULangObject::STRING || args[1]->type != ULangObject::STRING || args[2]->type != ULangObject::LIST)
             throw_runtime_error("http_post expects 3 arguments: URL (string), BODY (string), HEADERS (list)");
-
         std::string url = std::static_pointer_cast<StringObject>(args[0])->value;
         std::string body = std::static_pointer_cast<StringObject>(args[1])->value;
         auto headerList = std::static_pointer_cast<ListObject>(args[2]);
-
         std::string response_buffer;
         CURL* curl = curl_easy_init();
         struct curl_slist* headers = nullptr;
-
         if (curl) {
             curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
             curl_easy_setopt(curl, CURLOPT_POST, 1L);
             curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_buffer);
-            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
-
             for (auto& headerObj : headerList->elements) {
                 if (headerObj->type == ULangObject::STRING) {
                     headers = curl_slist_append(headers, std::static_pointer_cast<StringObject>(headerObj)->value.c_str());
                 }
             }
             curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-
             CURLcode res = curl_easy_perform(curl);
             curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
-
             if (res != CURLE_OK) throw_runtime_error("http_post failed: " + std::string(curl_easy_strerror(res)));
             return std::make_shared<StringObject>(response_buffer);
         }
@@ -498,7 +483,6 @@ void Interpreter::loadLibs() {
     }));
     define("http_get", std::make_shared<BuiltinFunction>("http_get", [](Interpreter&, const std::vector<std::shared_ptr<ULangObject>>& args) -> std::shared_ptr<ULangObject> {
         if (args.size() != 1 || args[0]->type != ULangObject::STRING) throw_runtime_error("http_get expects 1 string argument (URL)");
-
         std::string url = std::static_pointer_cast<StringObject>(args[0])->value;
         std::string response_buffer;
         CURL* curl = curl_easy_init();
@@ -506,14 +490,8 @@ void Interpreter::loadLibs() {
             curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_buffer);
-            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
-            
             CURLcode res = curl_easy_perform(curl);
             curl_easy_cleanup(curl);
-
             if (res != CURLE_OK) throw_runtime_error("http_get failed: " + std::string(curl_easy_strerror(res)));
             return std::make_shared<StringObject>(response_buffer);
         }
@@ -521,9 +499,6 @@ void Interpreter::loadLibs() {
         return VOID_INSTANCE;
     }));
 }
-
-// ... (kalan AST node sınıfları aynı kalacak, sadece VOID yerine VOID_TYPE kullan)
-
 class NumberNode : public ASTNode {
     double value;
 public:
@@ -532,7 +507,6 @@ public:
         return std::make_shared<NumberObject>(value);
     }
 };
-
 class StringNode : public ASTNode {
     std::string value;
 public:
@@ -541,7 +515,6 @@ public:
         return std::make_shared<StringObject>(value);
     }
 };
-
 class VariableNode : public ASTNode {
 public:
     std::string name;
@@ -550,7 +523,6 @@ public:
         return interpreter.lookup(name);
     }
 };
-
 class BinaryOpNode : public ASTNode {
     std::string op;
     std::shared_ptr<ASTNode> left, right;
@@ -561,7 +533,6 @@ public:
         auto r = right->evaluate(interpreter);
         if (op == "==") return std::make_shared<BooleanObject>(l->toString() == r->toString());
         if (op == "!=") return std::make_shared<BooleanObject>(l->toString() != r->toString());
-
         if (l->type == ULangObject::NUMBER && r->type == ULangObject::NUMBER) {
             double v1 = l->toDouble();
             double v2 = r->toDouble();
@@ -578,7 +549,6 @@ public:
         return VOID_INSTANCE;
     }
 };
-
 class AssignmentNode : public ASTNode {
     std::string name;
     std::shared_ptr<ASTNode> value;
@@ -588,13 +558,12 @@ public:
         auto res = value->evaluate(interpreter);
         try {
             interpreter.assign(name, res);
-        } catch(...) {
+        } catch (...) {
             interpreter.define(name, res);
         }
         return res;
     }
 };
-
 class VarDeclNode : public ASTNode {
     std::string name;
     std::shared_ptr<ASTNode> value;
@@ -606,7 +575,6 @@ public:
         return res;
     }
 };
-
 class BlockNode : public ASTNode {
 public:
     std::vector<std::shared_ptr<ASTNode>> statements;
@@ -615,7 +583,6 @@ public:
         return interpreter.executeBlock(statements);
     }
 };
-
 class IfNode : public ASTNode {
     std::shared_ptr<ASTNode> condition, thenBlock, elseBlock;
 public:
@@ -626,7 +593,6 @@ public:
         return VOID_INSTANCE;
     }
 };
-
 class WhileNode : public ASTNode {
     std::shared_ptr<ASTNode> condition, body;
 public:
@@ -638,7 +604,6 @@ public:
         return VOID_INSTANCE;
     }
 };
-
 class ForNode : public ASTNode {
     std::string varName;
     std::shared_ptr<ASTNode> iterator, body;
@@ -658,7 +623,6 @@ public:
         return VOID_INSTANCE;
     }
 };
-
 class CallNode : public ASTNode {
     std::shared_ptr<ASTNode> callee;
     std::vector<std::shared_ptr<ASTNode>> args;
@@ -668,7 +632,6 @@ public:
         auto func = callee->evaluate(interpreter);
         std::vector<std::shared_ptr<ULangObject>> evalArgs;
         for(auto& a : args) evalArgs.push_back(a->evaluate(interpreter));
-
         if (func->type == ULangObject::FUNCTION) return std::static_pointer_cast<FunctionObject>(func)->call(interpreter, evalArgs);
         if (func->type == ULangObject::BUILTIN) return std::static_pointer_cast<BuiltinFunction>(func)->call(interpreter, evalArgs);
         if (func->type == ULangObject::CLASS) {
@@ -684,7 +647,6 @@ public:
         return VOID_INSTANCE;
     }
 };
-
 class InstanceCreation : public ASTNode {
     std::string className;
     std::vector<std::shared_ptr<ASTNode>> args;
@@ -704,7 +666,6 @@ public:
         return instance;
     }
 };
-
 class ReturnNode : public ASTNode {
     std::shared_ptr<ASTNode> value;
 public:
@@ -714,7 +675,6 @@ public:
         throw res;
     }
 };
-
 class FunctionDeclNode : public ASTNode {
     std::string name;
     std::vector<std::string> params;
@@ -725,13 +685,11 @@ public:
         std::vector<std::shared_ptr<ASTNode>> stmts;
         if (auto b = std::dynamic_pointer_cast<BlockNode>(body)) stmts = b->statements;
         else stmts.push_back(body);
-
         auto func = std::make_shared<FunctionObject>(params, stmts);
         interpreter.define(name, func);
         return func;
     }
 };
-
 class ClassNode : public ASTNode {
     std::string name;
     std::map<std::string, std::shared_ptr<FunctionObject>> methods;
@@ -742,7 +700,6 @@ public:
         return VOID_INSTANCE;
     }
 };
-
 class PropertyGetNode : public ASTNode {
 public:
     std::shared_ptr<ASTNode> obj;
@@ -756,11 +713,9 @@ public:
         return VOID_INSTANCE;
     }
 };
-
 class PropertySetNode : public ASTNode {
-    std::shared_ptr<ASTNode> obj;
+    std::shared_ptr<ASTNode> obj, val;
     std::string prop;
-    std::shared_ptr<ASTNode> val;
 public:
     PropertySetNode(std::shared_ptr<ASTNode> o, std::string p, std::shared_ptr<ASTNode> v) : obj(o), prop(p), val(v) {}
     std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
@@ -774,7 +729,6 @@ public:
         return VOID_INSTANCE;
     }
 };
-
 class ListNode : public ASTNode {
     std::vector<std::shared_ptr<ASTNode>> elements;
 public:
@@ -785,11 +739,9 @@ public:
         return std::make_shared<ListObject>(values);
     }
 };
-
 class TryCatchNode : public ASTNode {
-    std::shared_ptr<ASTNode> tryBlock;
+    std::shared_ptr<ASTNode> tryBlock, catchBlock;
     std::string catchVar;
-    std::shared_ptr<ASTNode> catchBlock;
 public:
     TryCatchNode(std::shared_ptr<ASTNode> t, std::string v, std::shared_ptr<ASTNode> c) : tryBlock(t), catchVar(v), catchBlock(c) {}
     std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
@@ -810,7 +762,6 @@ public:
         }
     }
 };
-
 class ThisNode : public ASTNode {
 public:
     std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
@@ -819,31 +770,26 @@ public:
         return VOID_INSTANCE;
     }
 };
-
 class Parser {
     std::vector<Token> tokens;
     int pos = 0;
 public:
     Parser(std::vector<Token> t) : tokens(t) {}
-
     Token peek() { return tokens[pos]; }
     bool isAtEnd() { return peek().type == TOK_EOF; }
     Token advance() { if (!isAtEnd()) pos++; return tokens[pos-1]; }
-    bool check(TokenType t) { return !isAtEnd() && peek().type == t; }
-    Token consume(TokenType t, std::string msg) { if (check(t)) return advance(); throw_parser_error(msg); return tokens[0]; }
-
+    bool check(TokenKind t) { return !isAtEnd() && peek().type == t; }
+    Token consume(TokenKind t, std::string msg) { if (check(t)) return advance(); throw_parser_error(msg); return tokens[0]; }
     std::vector<std::shared_ptr<ASTNode>> parse() {
         std::vector<std::shared_ptr<ASTNode>> stmts;
         while (!isAtEnd()) stmts.push_back(declaration());
         return stmts;
     }
-
     std::shared_ptr<ASTNode> declaration() {
         if (check(TOK_FUNCTION)) return functionDecl();
         if (check(TOK_CLASS)) return classDecl();
         return statement();
     }
-
     std::shared_ptr<ASTNode> classDecl() {
         consume(TOK_CLASS, "Expect class");
         std::string name = consume(TOK_ID, "Expect class name").text;
@@ -870,7 +816,6 @@ public:
         consume(TOK_RBRACE, "Expect }");
         return std::make_shared<ClassNode>(name, methods);
     }
-
     std::shared_ptr<ASTNode> functionDecl() {
         consume(TOK_FUNCTION, "Expect function");
         std::string name = consume(TOK_ID, "Expect name").text;
@@ -883,7 +828,6 @@ public:
         consume(TOK_LBRACE, "Expect {");
         return std::make_shared<FunctionDeclNode>(name, params, block());
     }
-
     std::shared_ptr<ASTNode> statement() {
         if (check(TOK_IF)) return ifStmt();
         if (check(TOK_WHILE)) return whileStmt();
@@ -895,7 +839,6 @@ public:
         if (check(TOK_SEMICOLON)) advance();
         return expr;
     }
-
     std::shared_ptr<ASTNode> ifStmt() {
         consume(TOK_IF, "Expect if");
         consume(TOK_LPAREN, "Expect (");
@@ -912,7 +855,6 @@ public:
         }
         return std::make_shared<IfNode>(cond, thenB, elseB);
     }
-
     std::shared_ptr<ASTNode> whileStmt() {
         consume(TOK_WHILE, "Expect while");
         consume(TOK_LPAREN, "Expect (");
@@ -921,7 +863,6 @@ public:
         consume(TOK_LBRACE, "Expect {");
         return std::make_shared<WhileNode>(cond, block());
     }
-
     std::shared_ptr<ASTNode> forStmt() {
         consume(TOK_FOR, "Expect for");
         std::string var = consume(TOK_ID, "Expect var").text;
@@ -930,7 +871,6 @@ public:
         consume(TOK_LBRACE, "Expect {");
         return std::make_shared<ForNode>(var, iter, block());
     }
-
     std::shared_ptr<ASTNode> returnStmt() {
         consume(TOK_RETURN, "Expect return");
         std::shared_ptr<ASTNode> val = nullptr;
@@ -938,7 +878,6 @@ public:
         if (check(TOK_SEMICOLON)) advance();
         return std::make_shared<ReturnNode>(val);
     }
-
     std::shared_ptr<ASTNode> tryStmt() {
         consume(TOK_TRY, "Expect try");
         consume(TOK_LBRACE, "Expect {");
@@ -951,7 +890,6 @@ public:
         auto catchB = block();
         return std::make_shared<TryCatchNode>(tryB, v, catchB);
     }
-
     std::shared_ptr<ASTNode> block() {
         std::vector<std::shared_ptr<ASTNode>> stmts;
         while (!check(TOK_RBRACE) && !isAtEnd()) {
@@ -960,9 +898,7 @@ public:
         consume(TOK_RBRACE, "Expect }");
         return std::make_shared<BlockNode>(stmts);
     }
-
     std::shared_ptr<ASTNode> expression() { return assignment(); }
-
     std::shared_ptr<ASTNode> assignment() {
         auto expr = equality();
         if (check(TOK_EQUALS)) {
@@ -973,7 +909,6 @@ public:
         }
         return expr;
     }
-
     std::shared_ptr<ASTNode> equality() {
         auto expr = comparison();
         while (check(TOK_EE) || check(TOK_NE)) {
@@ -982,7 +917,6 @@ public:
         }
         return expr;
     }
-
     std::shared_ptr<ASTNode> comparison() {
         auto expr = term();
         while (check(TOK_LT) || check(TOK_GT)) {
@@ -991,7 +925,6 @@ public:
         }
         return expr;
     }
-
     std::shared_ptr<ASTNode> term() {
         auto expr = factor();
         while (check(TOK_PLUS) || check(TOK_MINUS)) {
@@ -1000,7 +933,6 @@ public:
         }
         return expr;
     }
-
     std::shared_ptr<ASTNode> factor() {
         auto expr = unary();
         while (check(TOK_STAR) || check(TOK_SLASH) || check(TOK_PERCENT)) {
@@ -1009,9 +941,7 @@ public:
         }
         return expr;
     }
-
     std::shared_ptr<ASTNode> unary() { return call(); }
-
     std::shared_ptr<ASTNode> call() {
         auto expr = primary();
         while (true) {
@@ -1033,7 +963,6 @@ public:
         }
         return expr;
     }
-
     std::shared_ptr<ASTNode> primary() {
         if (check(TOK_NEW)) {
             advance();
@@ -1074,7 +1003,6 @@ public:
         return nullptr;
     }
 };
-
 int main(int argc, char* argv[]) {
     if (argc < 2) { std::cerr << "Usage: ulang file.ul\n"; return 1; }
     std::ifstream f(argv[1]);

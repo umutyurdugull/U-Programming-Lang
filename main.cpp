@@ -205,6 +205,7 @@ std::vector<Token> tokenize(const std::string& source) {
     tokens.push_back(Token(TOK_EOF, "", current_line, current_column));
     return tokens;
 }
+
 class Interpreter;
 class ULangObject;
 class ASTNode;
@@ -481,6 +482,7 @@ void Interpreter::loadLibs() {
         throw_runtime_error("Failed to initialize cURL");
         return VOID_INSTANCE;
     }));
+    
     define("http_get", std::make_shared<BuiltinFunction>("http_get", [](Interpreter&, const std::vector<std::shared_ptr<ULangObject>>& args) -> std::shared_ptr<ULangObject> {
         if (args.size() != 1 || args[0]->type != ULangObject::STRING) throw_runtime_error("http_get expects 1 string argument (URL)");
         std::string url = std::static_pointer_cast<StringObject>(args[0])->value;

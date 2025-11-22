@@ -12,8 +12,13 @@
 #include <iomanip>
 #include <limits>
 #include <functional>
+#include <curl/curl.h>
 
-int current_line = 1; 
+#ifdef VOID
+#undef VOID
+#endif
+
+int current_line = 1;
 int current_column = 1;
 
 class ULangError : public std::runtime_error {
@@ -30,15 +35,16 @@ public:
 
 inline void throw_lexer_error(const std::string& msg) { throw ULangError(msg, "Lexer", current_line, current_column); }
 inline void throw_parser_error(const std::string& msg) { throw ULangError(msg, "Parser", current_line, current_column); }
+inline void void_throw_runtime_error(const std::string& msg) { throw ULangError(msg, "Runtime", current_line, current_column); }
 inline void throw_runtime_error(const std::string& msg) { throw ULangError(msg, "Runtime", current_line, current_column); }
 
-enum TokenType { 
+enum TokenType {
     TOK_ID, TOK_NUMBER, TOK_STRING_LIT, TOK_LPAREN, TOK_RPAREN, TOK_COMMA, TOK_EQUALS,
-    TOK_PLUS, TOK_MINUS, TOK_STAR, TOK_SLASH, TOK_PERCENT, TOK_LT, TOK_GT, TOK_EE, TOK_NE, 
+    TOK_PLUS, TOK_MINUS, TOK_STAR, TOK_SLASH, TOK_PERCENT, TOK_LT, TOK_GT, TOK_EE, TOK_NE,
     TOK_LBRACE, TOK_RBRACE, TOK_LBRACKET, TOK_RBRACKET, TOK_SEMICOLON,
     TOK_IF, TOK_ELSE, TOK_WHILE, TOK_FOR, TOK_IN, TOK_THAT, TOK_CASE,
-    TOK_CLASS, TOK_THIS, TOK_DOT, TOK_NEW, TOK_FUNCTION, TOK_RETURN, 
-    TOK_TRY, TOK_CATCH, TOK_NULL, TOK_TRUE, TOK_FALSE, TOK_EOF 
+    TOK_CLASS, TOK_THIS, TOK_DOT, TOK_NEW, TOK_FUNCTION, TOK_RETURN,
+    TOK_TRY, TOK_CATCH, TOK_NULL, TOK_TRUE, TOK_FALSE, TOK_EOF
 };
 
 struct Token {
@@ -46,7 +52,7 @@ struct Token {
     std::string text;
     int line;
     int column;
-    Token(TokenType t, const std::string& txt, int l = 0, int c = 0) 
+    Token(TokenType t, const std::string& txt, int l = 0, int c = 0)
         : type(t), text(txt), line(l), column(c) {}
 };
 
@@ -79,59 +85,78 @@ std::vector<Token> tokenize(const std::string& source) {
     while (i < source.length()) {
         char c = source[i];
         if (c == '\n') { i++; current_line++; current_column = 1; continue; }
-        if (isspace(c)) { i++; current_column++; continue; }
+        if (c == '\r') { i++; current_column++; continue; }
+        if (isspace(static_cast<unsigned char>(c))) { i++; current_column++; continue; }
         int start_line = current_line;
         int start_col = current_column;
         if (c == '"') {
             i++; current_column++;
             std::string s;
-            while (i < source.length() && source[i] != '"') {
-                if (source[i] == '\n') { current_line++; current_column = 1; }
-                else { current_column++; }
-                s += source[i++];
+            while (i < source.length()) {
+                if (source[i] == '\\') {
+                    i++; current_column++;
+                    if (i >= source.length()) throw_lexer_error("Invalid escape sequence in string literal.");
+                    char esc = source[i];
+                    if (esc == 'n') s += '\n';
+                    else if (esc == 't') s += '\t';
+                    else if (esc == 'r') s += '\r';
+                    else if (esc == '\\') s += '\\';
+                    else if (esc == '"') s += '"';
+                    else s += esc;
+                    i++; current_column++;
+                } else if (source[i] == '"') {
+                    i++; current_column++;
+                    break;
+                } else {
+                    if (source[i] == '\n') { current_line++; current_column = 1; }
+                    else current_column++;
+                    s += source[i++];
+                }
             }
-            if (i >= source.length()) throw_lexer_error("Unclosed string literal.");
-            i++; current_column++;
+            if (i > source.length()) throw_lexer_error("Unclosed string literal.");
             tokens.push_back(Token(TOK_STRING_LIT, s, start_line, start_col));
-        } 
-        else if (isalpha(c) || c == '_') {
+        }
+        else if (isalpha(static_cast<unsigned char>(c)) || c == '_') {
             std::string id;
-            while (i < source.length() && (isalnum(source[i]) || source[i] == '_')) {
+            while (i < source.length() && (isalnum(static_cast<unsigned char>(source[i])) || source[i] == '_')) {
                 id += source[i++];
             }
             tokens.push_back(Token(check_keyword(id), id, start_line, start_col));
             current_column += id.length();
-        } 
-        else if (isdigit(c)) {
+        }
+        else if (isdigit(static_cast<unsigned char>(c))) {
             std::string num;
-            while (i < source.length() && (isdigit(source[i]) || source[i] == '.')) {
+            while (i < source.length() && (isdigit(static_cast<unsigned char>(source[i])) || source[i] == '.')) {
                 num += source[i++];
             }
             tokens.push_back(Token(TOK_NUMBER, num, start_line, start_col));
             current_column += num.length();
-        } 
+        }
         else if (c == '=') {
-            if (i + 1 < source.length() && source[i+1] == '=') { 
+            if (i + 1 < source.length() && source[i+1] == '=') {
                 tokens.push_back(Token(TOK_EE, "==", start_line, start_col)); i+=2; current_column+=2;
-            } else { 
+            } else {
                 tokens.push_back(Token(TOK_EQUALS, "=", start_line, start_col)); i++; current_column++;
             }
-        } 
+        }
         else if (c == '!') {
             if (i + 1 < source.length() && source[i+1] == '=') {
                 tokens.push_back(Token(TOK_NE, "!=", start_line, start_col)); i+=2; current_column+=2;
             } else { i++; current_column++; throw_lexer_error("Unknown operator: '!'"); }
         }
-        else if (c == '/') { 
-            tokens.push_back(Token(TOK_SLASH, "/", start_line, start_col)); i++; current_column++;
+        else if (c == '/') {
+            if (i + 1 < source.length() && source[i+1] == '/') {
+                i += 2; current_column += 2;
+                while (i < source.length() && source[i] != '\n') { i++; current_column++; }
+                continue;
+            } else {
+                tokens.push_back(Token(TOK_SLASH, "/", start_line, start_col)); i++; current_column++;
+            }
         }
         else if (c == '-') {
             if (i + 1 < source.length() && source[i+1] == '>') {
                 i += 2; current_column += 2;
-                while (i < source.length() && source[i] != '\n') { 
-                    i++; 
-                    current_column++; 
-                }
+                while (i < source.length() && source[i] != '\n') { i++; current_column++; }
                 continue;
             } else {
                 tokens.push_back(Token(TOK_MINUS, "-", start_line, start_col)); i++; current_column++;
@@ -164,19 +189,19 @@ class InstanceObject;
 
 class ULangObject : public std::enable_shared_from_this<ULangObject> {
 public:
-    enum Type { NUMBER, STRING, BOOLEAN, FUNCTION, VOID, CLASS, INSTANCE, LIST, BUILTIN };
+    enum Type { NUMBER, STRING, BOOLEAN, FUNCTION, VOID_TYPE, CLASS, INSTANCE, LIST, BUILTIN };
     Type type;
     ULangObject(Type t) : type(t) {}
     virtual ~ULangObject() = default;
     virtual std::string toString() const = 0;
     virtual double toDouble() const { return 0.0; }
-    virtual bool isTruthy() const { return type != VOID && type != BOOLEAN ? true : (type == BOOLEAN ? toDouble() : false); }
+    virtual bool isTruthy() const { return type != VOID_TYPE && type != BOOLEAN ? true : (type == BOOLEAN ? toDouble() : false); }
     virtual std::shared_ptr<ULangObject> getMethod(const std::string& name) { return nullptr; }
 };
 
 class VoidObject : public ULangObject {
 public:
-    VoidObject() : ULangObject(VOID) {}
+    VoidObject() : ULangObject(VOID_TYPE) {}
     std::string toString() const override { return "null"; }
     bool isTruthy() const override { return false; }
 };
@@ -216,7 +241,7 @@ class FunctionObject : public ULangObject {
 public:
     std::vector<std::string> params;
     std::vector<std::shared_ptr<ASTNode>> body;
-    std::shared_ptr<InstanceObject> receiver; 
+    std::shared_ptr<InstanceObject> receiver;
     FunctionObject(const std::vector<std::string>& p, const std::vector<std::shared_ptr<ASTNode>>& b, std::shared_ptr<InstanceObject> r = nullptr)
         : ULangObject(FUNCTION), params(p), body(b), receiver(r) {}
     std::string toString() const override { return "<function>"; }
@@ -228,10 +253,10 @@ public:
 
 class BuiltinFunction : public ULangObject {
 public:
-    using FuncType = std::function<std::shared_ptr<ULangObject>(Interpreter&, const std::vector<std::shared_ptr<ULangObject>>&)>;
+    using FuncType = std::function<std::shared_ptr<ULangObject>(Interpreter&, const std::vector<std::shared_ptr<ULangObject>>&)> ;
     FuncType func;
     std::string name;
-    BuiltinFunction(const std::string& n, FuncType f) : ULangObject(BUILTIN), name(n), func(f) {}
+    BuiltinFunction(const std::string& n, FuncType f) : ULangObject(BUILTIN), func(f), name(n) {}
     std::string toString() const override { return "<builtin " + name + ">"; }
     std::shared_ptr<ULangObject> call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) { return func(interpreter, args); }
 };
@@ -317,6 +342,7 @@ public:
             if (it->count(name)) return (*it)[name];
         }
         throw_runtime_error("Undefined variable '" + name + "'.");
+        return VOID_INSTANCE;
     }
 
     void pushEnv() {
@@ -338,6 +364,12 @@ public:
     void loadLibs();
     std::shared_ptr<ULangObject> executeBlock(const std::vector<std::shared_ptr<ASTNode>>& statements);
 };
+
+size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
+    size_t total_size = size * nmemb;
+    output->append((char*)contents, total_size);
+    return total_size;
+}
 
 std::shared_ptr<ULangObject> ListObject::getMethod(const std::string& name) {
     if (name == "append") {
@@ -361,7 +393,7 @@ std::shared_ptr<ULangObject> ListObject::getMethod(const std::string& name) {
 std::shared_ptr<ULangObject> FunctionObject::call(Interpreter& interpreter, const std::vector<std::shared_ptr<ULangObject>>& args) {
     interpreter.pushEnv();
     if (receiver) interpreter.enterInstanceContext(receiver);
-    
+
     for (size_t i = 0; i < params.size(); ++i) {
         if (i < args.size()) interpreter.define(params[i], args[i]);
     }
@@ -424,7 +456,73 @@ void Interpreter::loadLibs() {
         }
         return VOID_INSTANCE;
     }));
+    define("http_post", std::make_shared<BuiltinFunction>("http_post", [](Interpreter&, const std::vector<std::shared_ptr<ULangObject>>& args) -> std::shared_ptr<ULangObject> {
+        if (args.size() != 3 || args[0]->type != ULangObject::STRING || args[1]->type != ULangObject::STRING || args[2]->type != ULangObject::LIST)
+            throw_runtime_error("http_post expects 3 arguments: URL (string), BODY (string), HEADERS (list)");
+
+        std::string url = std::static_pointer_cast<StringObject>(args[0])->value;
+        std::string body = std::static_pointer_cast<StringObject>(args[1])->value;
+        auto headerList = std::static_pointer_cast<ListObject>(args[2]);
+
+        std::string response_buffer;
+        CURL* curl = curl_easy_init();
+        struct curl_slist* headers = nullptr;
+
+        if (curl) {
+            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl, CURLOPT_POST, 1L);
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_buffer);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+
+            for (auto& headerObj : headerList->elements) {
+                if (headerObj->type == ULangObject::STRING) {
+                    headers = curl_slist_append(headers, std::static_pointer_cast<StringObject>(headerObj)->value.c_str());
+                }
+            }
+            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+            CURLcode res = curl_easy_perform(curl);
+            curl_slist_free_all(headers);
+            curl_easy_cleanup(curl);
+
+            if (res != CURLE_OK) throw_runtime_error("http_post failed: " + std::string(curl_easy_strerror(res)));
+            return std::make_shared<StringObject>(response_buffer);
+        }
+        throw_runtime_error("Failed to initialize cURL");
+        return VOID_INSTANCE;
+    }));
+    define("http_get", std::make_shared<BuiltinFunction>("http_get", [](Interpreter&, const std::vector<std::shared_ptr<ULangObject>>& args) -> std::shared_ptr<ULangObject> {
+        if (args.size() != 1 || args[0]->type != ULangObject::STRING) throw_runtime_error("http_get expects 1 string argument (URL)");
+
+        std::string url = std::static_pointer_cast<StringObject>(args[0])->value;
+        std::string response_buffer;
+        CURL* curl = curl_easy_init();
+        if (curl) {
+            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_buffer);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+            
+            CURLcode res = curl_easy_perform(curl);
+            curl_easy_cleanup(curl);
+
+            if (res != CURLE_OK) throw_runtime_error("http_get failed: " + std::string(curl_easy_strerror(res)));
+            return std::make_shared<StringObject>(response_buffer);
+        }
+        throw_runtime_error("Failed to initialize cURL");
+        return VOID_INSTANCE;
+    }));
 }
+
+// ... (kalan AST node sınıfları aynı kalacak, sadece VOID yerine VOID_TYPE kullan)
 
 class NumberNode : public ASTNode {
     double value;
@@ -463,7 +561,7 @@ public:
         auto r = right->evaluate(interpreter);
         if (op == "==") return std::make_shared<BooleanObject>(l->toString() == r->toString());
         if (op == "!=") return std::make_shared<BooleanObject>(l->toString() != r->toString());
-        
+
         if (l->type == ULangObject::NUMBER && r->type == ULangObject::NUMBER) {
             double v1 = l->toDouble();
             double v2 = r->toDouble();
@@ -570,7 +668,7 @@ public:
         auto func = callee->evaluate(interpreter);
         std::vector<std::shared_ptr<ULangObject>> evalArgs;
         for(auto& a : args) evalArgs.push_back(a->evaluate(interpreter));
-        
+
         if (func->type == ULangObject::FUNCTION) return std::static_pointer_cast<FunctionObject>(func)->call(interpreter, evalArgs);
         if (func->type == ULangObject::BUILTIN) return std::static_pointer_cast<BuiltinFunction>(func)->call(interpreter, evalArgs);
         if (func->type == ULangObject::CLASS) {
@@ -613,7 +711,7 @@ public:
     ReturnNode(std::shared_ptr<ASTNode> v) : value(v) {}
     std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
         auto res = value ? value->evaluate(interpreter) : VOID_INSTANCE;
-        throw res; 
+        throw res;
     }
 };
 
@@ -625,9 +723,9 @@ public:
     FunctionDeclNode(std::string n, std::vector<std::string> p, std::shared_ptr<ASTNode> b) : name(n), params(p), body(b) {}
     std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
         std::vector<std::shared_ptr<ASTNode>> stmts;
-        if (auto b = std::dynamic_pointer_cast<BlockNode>(body)) stmts = b->statements; 
+        if (auto b = std::dynamic_pointer_cast<BlockNode>(body)) stmts = b->statements;
         else stmts.push_back(body);
-        
+
         auto func = std::make_shared<FunctionObject>(params, stmts);
         interpreter.define(name, func);
         return func;
@@ -660,8 +758,9 @@ public:
 };
 
 class PropertySetNode : public ASTNode {
-    std::shared_ptr<ASTNode> obj, val;
+    std::shared_ptr<ASTNode> obj;
     std::string prop;
+    std::shared_ptr<ASTNode> val;
 public:
     PropertySetNode(std::shared_ptr<ASTNode> o, std::string p, std::shared_ptr<ASTNode> v) : obj(o), prop(p), val(v) {}
     std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
@@ -688,20 +787,21 @@ public:
 };
 
 class TryCatchNode : public ASTNode {
-    std::shared_ptr<ASTNode> tryBlock, catchBlock;
+    std::shared_ptr<ASTNode> tryBlock;
     std::string catchVar;
+    std::shared_ptr<ASTNode> catchBlock;
 public:
     TryCatchNode(std::shared_ptr<ASTNode> t, std::string v, std::shared_ptr<ASTNode> c) : tryBlock(t), catchVar(v), catchBlock(c) {}
     std::shared_ptr<ULangObject> evaluate(Interpreter& interpreter) override {
         try {
             return tryBlock->evaluate(interpreter);
-        } catch (const std::exception& e) { 
+        } catch (const std::exception& e) {
             interpreter.pushEnv();
             interpreter.define(catchVar, std::make_shared<StringObject>(e.what()));
             auto res = catchBlock->evaluate(interpreter);
             interpreter.popEnv();
             return res;
-        } catch (std::shared_ptr<ULangObject> e) { 
+        } catch (std::shared_ptr<ULangObject> e) {
              interpreter.pushEnv();
              interpreter.define(catchVar, e);
              auto res = catchBlock->evaluate(interpreter);
@@ -725,7 +825,7 @@ class Parser {
     int pos = 0;
 public:
     Parser(std::vector<Token> t) : tokens(t) {}
-    
+
     Token peek() { return tokens[pos]; }
     bool isAtEnd() { return peek().type == TOK_EOF; }
     Token advance() { if (!isAtEnd()) pos++; return tokens[pos-1]; }
@@ -743,11 +843,7 @@ public:
         if (check(TOK_CLASS)) return classDecl();
         return statement();
     }
-    /*
-    all alone 
-    alone again
-    alone.
-    */
+
     std::shared_ptr<ASTNode> classDecl() {
         consume(TOK_CLASS, "Expect class");
         std::string name = consume(TOK_ID, "Expect class name").text;
@@ -769,7 +865,7 @@ public:
             } else {
                 bodyStmts.push_back(body);
             }
-            methods[mName] = std::make_shared<FunctionObject>(params, bodyStmts); 
+            methods[mName] = std::make_shared<FunctionObject>(params, bodyStmts);
         }
         consume(TOK_RBRACE, "Expect }");
         return std::make_shared<ClassNode>(name, methods);
@@ -872,7 +968,7 @@ public:
         if (check(TOK_EQUALS)) {
             advance();
             auto val = assignment();
-            if (auto v = std::dynamic_pointer_cast<VariableNode>(expr)) return std::make_shared<AssignmentNode>(v->name, val); 
+            if (auto v = std::dynamic_pointer_cast<VariableNode>(expr)) return std::make_shared<AssignmentNode>(v->name, val);
             if (auto p = std::dynamic_pointer_cast<PropertyGetNode>(expr)) return std::make_shared<PropertySetNode>(p->obj, p->prop, val);
         }
         return expr;
@@ -950,9 +1046,9 @@ public:
             consume(TOK_RPAREN, "Expect )");
             return std::make_shared<InstanceCreation>(className, args);
         }
-        if (check(TOK_FALSE)) { advance(); return std::make_shared<NumberNode>(0); } 
+        if (check(TOK_FALSE)) { advance(); return std::make_shared<NumberNode>(0); }
         if (check(TOK_TRUE)) { advance(); return std::make_shared<NumberNode>(1); }
-        if (check(TOK_NULL)) { advance(); return std::make_shared<StringNode>("null"); } 
+        if (check(TOK_NULL)) { advance(); return std::make_shared<StringNode>("null"); }
         if (check(TOK_THIS)) { advance(); return std::make_shared<ThisNode>(); }
         if (check(TOK_NUMBER)) return std::make_shared<NumberNode>(std::stod(advance().text));
         if (check(TOK_STRING_LIT)) return std::make_shared<StringNode>(advance().text);
@@ -990,8 +1086,10 @@ int main(int argc, char* argv[]) {
         auto nodes = parser.parse();
         Interpreter interpreter;
         interpreter.executeBlock(nodes);
+    } catch (ULangError& e) {
+        std::cerr << e.getFullMessage() << "\n";
     } catch (std::exception& e) {
-        std::cerr << e.what() << "\n";
+        std::cerr << "INTERNAL ERROR: " << e.what() << "\n";
     }
     return 0;
 }
